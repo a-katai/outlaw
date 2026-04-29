@@ -191,16 +191,16 @@ export const latestResult = {
 
 export const upcomingMatchups = [
   {
-    date: "Next Week",
+    date: "29 April 2026",
     home: "Toe Dragons",
     away: "Trashers",
-    notes: "Playoff Semifinal",
+    notes: "Playoff Semifinal · 10:00 PM",
   },
   {
-    date: "Next Week",
+    date: "29 April 2026",
     home: "Ghost Pirates",
     away: "Wednesday Knights",
-    notes: "Playoff Semifinal",
+    notes: "Playoff Semifinal · 10:30 PM",
   },
 ];
 

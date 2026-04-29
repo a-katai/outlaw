@@ -48,14 +48,14 @@ export default function PaymentsPage() {
     <section className="space-y-8">
       <div>
         <p className="text-xs font-semibold tracking-[0.2em] text-neutral-500 uppercase">League Hub</p>
-        <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Payments</h1>
-        <p className="mt-3 text-neutral-600">Secure card checkout for league fees and dues.</p>
+        <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Donate</h1>
+        <p className="mt-3 text-neutral-600">Support the league with a donation of any amount.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1.35fr_1fr]">
         <form onSubmit={submitPayment} className="glass-card rounded-3xl p-6 md:p-8">
-          <h2 className="text-xl font-semibold text-neutral-900">Pay by Card</h2>
-          <p className="mt-1 text-sm text-neutral-500">Card details are shown as a demo form for league checkout.</p>
+          <h2 className="text-xl font-semibold text-neutral-900">Donate by Card</h2>
+          <p className="mt-1 text-sm text-neutral-500">Card details are shown as a demo form for league donations.</p>
 
           <div className="mt-6 grid gap-4">
             <label className="grid gap-1.5 text-sm">
@@ -167,7 +167,7 @@ export default function PaymentsPage() {
           <h2 className="text-xl font-semibold text-neutral-900">Order Summary</h2>
           <div className="mt-5 space-y-3 text-sm text-neutral-600">
             <div className="flex items-center justify-between">
-              <span>League fee</span>
+              <span>Donation</span>
               <span className="font-semibold text-neutral-900">${Number(amount || "0").toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between">
@@ -182,18 +182,18 @@ export default function PaymentsPage() {
           </div>
 
           <div className="mt-8 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900">
-            This is a front-end demo checkout. To process real cards, connect Stripe or Square.
+            This is a front-end demo donation form. To process real cards, connect Stripe or Square.
           </div>
           <p className="mt-3 text-xs text-neutral-500">Your card details are not sent anywhere yet in this demo mode.</p>
         </aside>
       </div>
 
       <div className="glass-card rounded-3xl p-6">
-        <h2 className="text-xl font-semibold text-neutral-900">League Notes</h2>
+        <h2 className="text-xl font-semibold text-neutral-900">Donation Notes</h2>
         <ul className="mt-4 space-y-2 text-sm text-neutral-600">
-          <li>Include your player name in the payment note.</li>
-          <li>Pay before puck drop when possible.</li>
-          <li>Contact league admin for any payment plan requests.</li>
+          <li>Include your name in the donation note if you want to be identified.</li>
+          <li>Every donation helps support league costs and game operations.</li>
+          <li>Contact league admin if you want your donation earmarked for a specific need.</li>
         </ul>
       </div>
     </section>

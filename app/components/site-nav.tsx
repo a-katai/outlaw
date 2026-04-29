@@ -11,7 +11,7 @@ const menuLinks = [
   { href: "/", label: "Home" },
   { href: "/stats", label: "Stats" },
   { href: "/schedule", label: "Schedule" },
-  { href: "/payments", label: "Payments" },
+  { href: "/payments", label: "Donate" },
   { href: "/videos", label: "Videos" },
 ];
 
