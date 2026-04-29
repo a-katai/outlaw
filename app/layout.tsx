@@ -21,13 +21,13 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Outlaw Hockey League",
     description: "Stats, schedule, payments, and videos for the Outlaw Hockey League.",
-    images: ["/ohl_logo_2.png"],
+    images: ["/ohl_logo_letters.png"],
   },
   twitter: {
     card: "summary_large_image",
     title: "Outlaw Hockey League",
     description: "Stats, schedule, payments, and videos for the Outlaw Hockey League.",
-    images: ["/ohl_logo_2.png"],
+    images: ["/ohl_logo_letters.png"],
   },
   icons: {
     icon: "/ohl_logo_letters.png",
