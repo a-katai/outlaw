@@ -155,9 +155,6 @@ export default function StatsPage() {
       <div>
         <p className="text-xs font-semibold tracking-[0.2em] text-neutral-500 uppercase">League Hub</p>
         <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Stats</h1>
-        <p className="mt-3 text-neutral-600">
-          Updated with your current standings and top scorers. {leaguePlayers.length} league players and {subPlayers.length} subs tracked.
-        </p>
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
           <button type="button" onClick={downloadStandingsPdf} className="text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900">
             Download standings PDF
