@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import { getTeamColors, standings, topSkaters } from "@/lib/league-data";
 
@@ -33,6 +35,79 @@ export default function StatsPage() {
   const sortButtonClass = (key: SortKey) =>
     `font-semibold transition hover:text-neutral-800 ${sortKey === key ? "text-neutral-900 underline underline-offset-4" : ""}`;
 
+  const downloadStandingsPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Outlaw Hockey League Standings", 14, 18);
+    doc.setFontSize(10);
+    doc.text("League standings export", 14, 25);
+
+    autoTable(doc, {
+      startY: 32,
+      head: [["Team", "GP", "W", "L", "T", "PTS", "PTS%", "GF", "GA", "DIFF"]],
+      body: standings.map((team) => [
+        team.team,
+        team.gp,
+        team.wins,
+        team.losses,
+        team.ties,
+        team.points,
+        team.pct,
+        team.goalsFor,
+        team.goalsAgainst,
+        team.diff >= 0 ? `+${team.diff}` : `${team.diff}`,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [29, 29, 31] },
+    });
+
+    doc.save("outlaw-league-standings.pdf");
+  };
+
+  const downloadPlayerStatsPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Outlaw Hockey League Player Stats", 14, 18);
+    doc.setFontSize(10);
+    doc.text("League players and subs export", 14, 25);
+
+    autoTable(doc, {
+      startY: 32,
+      head: [["League Players", "Team", "GP", "G", "A", "PTS", "PTS/GP"]],
+      body: leaguePlayers.map((player) => [
+        player.player,
+        player.team,
+        player.gamesPlayed,
+        player.goals,
+        player.assists,
+        player.points,
+        (player.points / player.gamesPlayed).toFixed(2),
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [29, 29, 31] },
+    });
+
+    autoTable(doc, {
+      startY: (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+        ? ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
+        : 40,
+      head: [["Subs", "Team", "GP", "G", "A", "PTS", "PTS/GP"]],
+      body: subPlayers.map((player) => [
+        player.player,
+        player.team,
+        player.gamesPlayed,
+        player.goals,
+        player.assists,
+        player.points,
+        (player.points / player.gamesPlayed).toFixed(2),
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [79, 70, 229] },
+    });
+
+    doc.save("outlaw-player-stats.pdf");
+  };
+
   return (
     <section className="space-y-8">
       <div>
@@ -41,6 +116,14 @@ export default function StatsPage() {
         <p className="mt-3 text-neutral-600">
           Updated with your current standings and top scorers. {leaguePlayers.length} league players and {subPlayers.length} subs tracked.
         </p>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          <button type="button" onClick={downloadStandingsPdf} className="text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900">
+            Download standings PDF
+          </button>
+          <button type="button" onClick={downloadPlayerStatsPdf} className="text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900">
+            Download player stats PDF
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:hidden">
