@@ -35,6 +35,21 @@ export default function StatsPage() {
   const sortButtonClass = (key: SortKey) =>
     `font-semibold transition hover:text-neutral-800 ${sortKey === key ? "text-neutral-900 underline underline-offset-4" : ""}`;
 
+  const hexToRgb = (hex: string) => {
+    const normalized = hex.replace("#", "");
+    const value = normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : normalized;
+    return [
+      Number.parseInt(value.slice(0, 2), 16),
+      Number.parseInt(value.slice(2, 4), 16),
+      Number.parseInt(value.slice(4, 6), 16),
+    ] as [number, number, number];
+  };
+
   const downloadStandingsPdf = () => {
     const doc = new jsPDF();
     doc.setFontSize(18);
@@ -59,6 +74,15 @@ export default function StatsPage() {
       ]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [29, 29, 31] },
+      didParseCell: (data) => {
+        if (data.section !== "body" || data.column.index !== 0) return;
+        const teamName = String(data.cell.raw ?? "");
+        const colors = getTeamColors(teamName);
+        data.cell.styles.fillColor = hexToRgb(colors.background);
+        data.cell.styles.textColor = hexToRgb(colors.text);
+        data.cell.styles.lineColor = hexToRgb(colors.border);
+        data.cell.styles.lineWidth = 0.25;
+      },
     });
 
     doc.save("outlaw-league-standings.pdf");
@@ -85,6 +109,15 @@ export default function StatsPage() {
       ]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [29, 29, 31] },
+      didParseCell: (data) => {
+        if (data.section !== "body" || data.column.index !== 1) return;
+        const teamName = String(data.cell.raw ?? "");
+        const colors = getTeamColors(teamName);
+        data.cell.styles.fillColor = hexToRgb(colors.background);
+        data.cell.styles.textColor = hexToRgb(colors.text);
+        data.cell.styles.lineColor = hexToRgb(colors.border);
+        data.cell.styles.lineWidth = 0.25;
+      },
     });
 
     autoTable(doc, {
@@ -103,6 +136,15 @@ export default function StatsPage() {
       ]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [79, 70, 229] },
+      didParseCell: (data) => {
+        if (data.section !== "body" || data.column.index !== 1) return;
+        const teamName = String(data.cell.raw ?? "");
+        const colors = getTeamColors(teamName);
+        data.cell.styles.fillColor = hexToRgb(colors.background);
+        data.cell.styles.textColor = hexToRgb(colors.text);
+        data.cell.styles.lineColor = hexToRgb(colors.border);
+        data.cell.styles.lineWidth = 0.25;
+      },
     });
 
     doc.save("outlaw-player-stats.pdf");
@@ -126,36 +168,40 @@ export default function StatsPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:hidden">
-        {standings.map((team) => (
-          <article key={team.team} className="glass-card rounded-2xl p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span
-                className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                style={{
-                  backgroundColor: getTeamColors(team.team).background,
-                  color: getTeamColors(team.team).text,
-                  borderColor: getTeamColors(team.team).border,
-                }}
-              >
-                {team.team}
-              </span>
-              <span className={`text-sm font-semibold ${team.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+      <div className="glass-card overflow-hidden rounded-3xl md:hidden">
+        <div className="grid grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+          <p>Team</p>
+          <p className="text-center">GP</p>
+          <p className="text-center">W</p>
+          <p className="text-center">L</p>
+          <p className="text-center">PTS</p>
+          <p className="text-center">DIFF</p>
+        </div>
+        <div className="divide-y divide-black/5">
+          {standings.map((team) => (
+            <div key={team.team} className="grid grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+              <div className="min-w-0">
+                <span
+                  className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: getTeamColors(team.team).background,
+                    color: getTeamColors(team.team).text,
+                    borderColor: getTeamColors(team.team).border,
+                  }}
+                >
+                  <span className="truncate">{team.team}</span>
+                </span>
+              </div>
+              <p className="text-center">{team.gp}</p>
+              <p className="text-center">{team.wins}</p>
+              <p className="text-center">{team.losses}</p>
+              <p className="text-center font-semibold text-neutral-900">{team.points}</p>
+              <p className={`text-center font-semibold ${team.diff >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                 {team.diff >= 0 ? `+${team.diff}` : team.diff}
-              </span>
+              </p>
             </div>
-            <div className="mt-3 grid grid-cols-4 gap-2 text-xs text-neutral-600">
-              <p>GP: {team.gp}</p>
-              <p>W: {team.wins}</p>
-              <p>L: {team.losses}</p>
-              <p>T: {team.ties}</p>
-              <p>PTS: {team.points}</p>
-              <p>PTS%: {team.pct}</p>
-              <p>GF: {team.goalsFor}</p>
-              <p>GA: {team.goalsAgainst}</p>
-            </div>
-          </article>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="glass-card hidden overflow-x-auto rounded-3xl md:block">
@@ -210,31 +256,40 @@ export default function StatsPage() {
         <h2 className="text-2xl font-semibold text-neutral-900">League Players</h2>
       </div>
 
-      <div className="grid gap-3 md:hidden">
-        {leaguePlayers.map((player) => (
-          <article key={player.player} className="glass-card rounded-2xl p-4">
-            <p className="text-sm font-semibold text-neutral-900">{player.player}</p>
-            <div className="mt-2">
-              <span
-                className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                style={{
-                  backgroundColor: getTeamColors(player.team).background,
-                  color: getTeamColors(player.team).text,
-                  borderColor: getTeamColors(player.team).border,
-                }}
-              >
-                {player.team}
-              </span>
+      <div className="glass-card overflow-hidden rounded-3xl md:hidden">
+        <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+          <p>Player</p>
+          <p className="text-center">GP</p>
+          <p className="text-center">G</p>
+          <p className="text-center">A</p>
+          <p className="text-center">PTS</p>
+        </div>
+        <div className="divide-y divide-black/5">
+          {leaguePlayers.map((player) => (
+            <div key={player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-neutral-900">{player.player}</p>
+                <span
+                  className="mt-1 inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: getTeamColors(player.team).background,
+                    color: getTeamColors(player.team).text,
+                    borderColor: getTeamColors(player.team).border,
+                  }}
+                >
+                  <span className="truncate">{player.team}</span>
+                </span>
+              </div>
+              <p className="text-center">{player.gamesPlayed}</p>
+              <p className="text-center">{player.goals}</p>
+              <p className="text-center">{player.assists}</p>
+              <div className="text-center">
+                <p className="font-semibold text-neutral-900">{player.points}</p>
+                <p className="text-[10px] text-neutral-500">{(player.points / player.gamesPlayed).toFixed(2)}</p>
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-neutral-600">
-              <p>GP: {player.gamesPlayed}</p>
-              <p>G: {player.goals}</p>
-              <p>A: {player.assists}</p>
-              <p>PTS: {player.points}</p>
-              <p>PTS/GP: {(player.points / player.gamesPlayed).toFixed(2)}</p>
-            </div>
-          </article>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="glass-card hidden overflow-x-auto rounded-3xl md:block">
@@ -309,31 +364,40 @@ export default function StatsPage() {
         <h2 className="text-2xl font-semibold text-neutral-900">Subs</h2>
       </div>
 
-      <div className="grid gap-3 md:hidden">
-        {subPlayers.map((player) => (
-          <article key={player.player} className="glass-card rounded-2xl p-4">
-            <p className="text-sm font-semibold text-neutral-900">{player.player}</p>
-            <div className="mt-2">
-              <span
-                className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                style={{
-                  backgroundColor: getTeamColors(player.team).background,
-                  color: getTeamColors(player.team).text,
-                  borderColor: getTeamColors(player.team).border,
-                }}
-              >
-                {player.team}
-              </span>
+      <div className="glass-card overflow-hidden rounded-3xl md:hidden">
+        <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+          <p>Sub</p>
+          <p className="text-center">GP</p>
+          <p className="text-center">G</p>
+          <p className="text-center">A</p>
+          <p className="text-center">PTS</p>
+        </div>
+        <div className="divide-y divide-black/5">
+          {subPlayers.map((player) => (
+            <div key={player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-neutral-900">{player.player}</p>
+                <span
+                  className="mt-1 inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: getTeamColors(player.team).background,
+                    color: getTeamColors(player.team).text,
+                    borderColor: getTeamColors(player.team).border,
+                  }}
+                >
+                  <span className="truncate">{player.team}</span>
+                </span>
+              </div>
+              <p className="text-center">{player.gamesPlayed}</p>
+              <p className="text-center">{player.goals}</p>
+              <p className="text-center">{player.assists}</p>
+              <div className="text-center">
+                <p className="font-semibold text-neutral-900">{player.points}</p>
+                <p className="text-[10px] text-neutral-500">{(player.points / player.gamesPlayed).toFixed(2)}</p>
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-neutral-600">
-              <p>GP: {player.gamesPlayed}</p>
-              <p>G: {player.goals}</p>
-              <p>A: {player.assists}</p>
-              <p>PTS: {player.points}</p>
-              <p>PTS/GP: {(player.points / player.gamesPlayed).toFixed(2)}</p>
-            </div>
-          </article>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="glass-card hidden overflow-x-auto rounded-3xl md:block">
