@@ -46,6 +46,13 @@ export type SeasonAdminGameStat = {
   assists: number;
 };
 
+export type SeasonAdminGameRoster = {
+  id: string;
+  game_id: string;
+  player_id: string;
+  team_id: string;
+};
+
 export type SeasonAdminSeries = {
   id: string;
   season_id: string;
@@ -68,6 +75,7 @@ export type SeasonAdminState = {
   draftPicks: SeasonAdminPick[];
   games: SeasonAdminGame[];
   gameStats: SeasonAdminGameStat[];
+  gameRosters: SeasonAdminGameRoster[];
   playoffSeries: SeasonAdminSeries[];
 };
 

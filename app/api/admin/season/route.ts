@@ -29,6 +29,7 @@ export async function GET() {
 
   let games: unknown[] = [];
   let gameStats: unknown[] = [];
+  let gameRosters: unknown[] = [];
   let playoffSeries: unknown[] = [];
   if (activeSeason) {
     const gamesRes = await supabase
@@ -41,9 +42,14 @@ export async function GET() {
 
     const gameIds = games.map((g) => (g as { id: string }).id);
     if (gameIds.length) {
-      const statsRes = await supabase.from("game_stats").select("*").in("game_id", gameIds);
+      const [statsRes, rostersRes] = await Promise.all([
+        supabase.from("game_stats").select("*").in("game_id", gameIds),
+        supabase.from("game_rosters").select("*").in("game_id", gameIds),
+      ]);
       if (statsRes.error) return NextResponse.json({ ok: false, error: statsRes.error.message }, { status: 500 });
+      if (rostersRes.error) return NextResponse.json({ ok: false, error: rostersRes.error.message }, { status: 500 });
       gameStats = statsRes.data ?? [];
+      gameRosters = rostersRes.data ?? [];
     }
 
     const seriesRes = await supabase
@@ -65,6 +71,7 @@ export async function GET() {
     draftPicks: picksRes.data ?? [],
     games,
     gameStats,
+    gameRosters,
     playoffSeries,
   });
 }

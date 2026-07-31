@@ -6,7 +6,8 @@ import { getTeamColors } from "@/lib/league-data";
 
 const POLL_MS = 10000;
 
-type RosterPlayer = { id: string; name: string };
+type RosterPlayer = { id: string; name: string; dressed: boolean };
+type PoolPlayer = { id: string; name: string };
 
 type GoalEvent = {
   id: string;
@@ -36,6 +37,7 @@ type ConsoleGame = {
 type ConsoleData = {
   game: ConsoleGame;
   roster: { home: RosterPlayer[]; away: RosterPlayer[] };
+  playerPool: PoolPlayer[];
   goalEvents: GoalEvent[];
 };
 
@@ -157,8 +159,39 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
     );
   }
 
-  const { game, roster, goalEvents } = data;
+  const { game, roster, playerPool, goalEvents } = data;
   const rosterFor = (team: "home" | "away") => (team === "home" ? roster.home : roster.away);
+  const dressedCount = (list: RosterPlayer[]) => list.filter((p) => p.dressed).length;
+  const availablePool = playerPool.filter(
+    (p) => !roster.home.some((r) => r.id === p.id) && !roster.away.some((r) => r.id === p.id),
+  );
+
+  const rosterOptions = (list: RosterPlayer[]) => {
+    const dressed = list.filter((p) => p.dressed);
+    const rest = list.filter((p) => !p.dressed);
+    return (
+      <>
+        {dressed.length ? (
+          <optgroup label="On the ice">
+            {dressed.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {rest.length ? (
+          <optgroup label="Rest of roster">
+            {rest.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+      </>
+    );
+  };
 
   return (
     <section className="space-y-6 pb-16">
@@ -167,10 +200,16 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
       </Link>
 
       <div className="glass-card rounded-3xl p-6 text-center">
-        <div className="flex items-center justify-center gap-2">
-          <TeamPill name={game.awayTeam} />
+        <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col items-center gap-1">
+            <TeamPill name={game.awayTeam} />
+            <span className="text-[11px] font-medium text-neutral-500">{dressedCount(roster.away)} dressed</span>
+          </div>
           <span className="text-neutral-400">at</span>
-          <TeamPill name={game.homeTeam} />
+          <div className="flex flex-col items-center gap-1">
+            <TeamPill name={game.homeTeam} />
+            <span className="text-[11px] font-medium text-neutral-500">{dressedCount(roster.home)} dressed</span>
+          </div>
         </div>
         <p className="mt-4 text-6xl font-semibold text-neutral-900">
           {game.awayScore ?? 0}<span className="mx-2 text-neutral-300">–</span>{game.homeScore ?? 0}
@@ -189,6 +228,28 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
       </div>
 
       {actionError ? <p className="text-center text-sm font-medium text-rose-600">{actionError}</p> : null}
+
+      {game.status === "scheduled" || game.status === "live" ? (
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900">Lineups</h2>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <LineupColumn
+              teamName={game.awayTeam}
+              roster={roster.away}
+              pool={availablePool}
+              busy={busy}
+              onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.awayTeamId, playerId, dressed })}
+            />
+            <LineupColumn
+              teamName={game.homeTeam}
+              roster={roster.home}
+              pool={availablePool}
+              busy={busy}
+              onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.homeTeamId, playerId, dressed })}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {game.status === "scheduled" ? (
         <button
@@ -235,11 +296,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
                   className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
                 >
                   <option value="">Unknown / other</option>
-                  {rosterFor(pickerTeam).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
+                  {rosterOptions(rosterFor(pickerTeam))}
                 </select>
               </label>
               <label className="grid gap-1.5 text-sm">
@@ -250,11 +307,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
                   className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
                 >
                   <option value="">None</option>
-                  {rosterFor(pickerTeam).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
+                  {rosterOptions(rosterFor(pickerTeam))}
                 </select>
               </label>
               <div className="flex gap-2">
@@ -355,5 +408,77 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
         )}
       </div>
     </section>
+  );
+}
+
+function LineupColumn({
+  teamName,
+  roster,
+  pool,
+  busy,
+  onToggle,
+}: {
+  teamName: string;
+  roster: RosterPlayer[];
+  pool: PoolPlayer[];
+  busy: boolean;
+  onToggle: (playerId: string, dressed: boolean) => void;
+}) {
+  const [addId, setAddId] = useState("");
+  const dressed = roster.filter((p) => p.dressed).length;
+
+  return (
+    <div className="glass-card rounded-3xl p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+        {teamName} · {dressed} dressed
+      </p>
+      <div className="mt-3 space-y-1.5">
+        {roster.length === 0 ? (
+          <p className="text-sm text-neutral-500">No roster yet.</p>
+        ) : (
+          roster.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={busy}
+              onClick={() => onToggle(p.id, !p.dressed)}
+              className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition disabled:opacity-50 ${
+                p.dressed
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-black/10 bg-white text-neutral-600"
+              }`}
+            >
+              <span>{p.name}</span>
+              <span className="text-xs font-semibold">{p.dressed ? "Dressed" : "Tap to dress"}</span>
+            </button>
+          ))
+        )}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <select
+          value={addId}
+          onChange={(e) => setAddId(e.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none ring-blue-500/30 focus:ring-4"
+        >
+          <option value="">Add player…</option>
+          {pool.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={!addId || busy}
+          onClick={() => {
+            onToggle(addId, true);
+            setAddId("");
+          }}
+          className="shrink-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+        >
+          Add
+        </button>
+      </div>
+    </div>
   );
 }

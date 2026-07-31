@@ -20,40 +20,47 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
   if (!game) return NextResponse.json({ ok: false, error: "Game not found" }, { status: 404 });
 
   const teamIds = [game.home_team_id, game.away_team_id];
-  const [teamsRes, picksRes, goalsRes] = await Promise.all([
+  const [teamsRes, picksRes, rostersRes, goalsRes, allPlayersRes] = await Promise.all([
     supabase.from("teams").select("id,name").in("id", teamIds),
     supabase.from("draft_picks").select("team_id,player_id").in("team_id", teamIds),
+    supabase.from("game_rosters").select("team_id,player_id").eq("game_id", gameId),
     supabase
       .from("goal_events")
       .select("id,team_id,scorer_id,assist_id,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
+    supabase.from("players").select("id,name").order("name", { ascending: true }),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
+  if (rostersRes.error) return NextResponse.json({ ok: false, error: rostersRes.error.message }, { status: 500 });
   if (goalsRes.error) return NextResponse.json({ ok: false, error: goalsRes.error.message }, { status: 500 });
+  if (allPlayersRes.error) return NextResponse.json({ ok: false, error: allPlayersRes.error.message }, { status: 500 });
 
   const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
   const picks = picksRes.data ?? [];
+  const dressedRows = rostersRes.data ?? [];
   const goals = goalsRes.data ?? [];
+  const allPlayers = allPlayersRes.data ?? [];
+  const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]));
 
-  const playerIds = Array.from(
-    new Set([
-      ...picks.map((p) => p.player_id),
-      ...goals.map((g) => g.scorer_id).filter((v): v is string => Boolean(v)),
-      ...goals.map((g) => g.assist_id).filter((v): v is string => Boolean(v)),
-    ]),
-  );
-  const playersRes = playerIds.length
-    ? await supabase.from("players").select("id,name").in("id", playerIds)
-    : { data: [] as { id: string; name: string }[] };
-  const playerNameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
+  const rosterFor = (teamId: string) => {
+    const draftIds = picks.filter((p) => p.team_id === teamId).map((p) => p.player_id);
+    const dressedIds = dressedRows.filter((r) => r.team_id === teamId).map((r) => r.player_id);
+    const dressedSet = new Set(dressedIds);
+    const allIds = Array.from(new Set([...draftIds, ...dressedIds]));
+    return allIds
+      .map((id) => ({ id, name: playerNameById.get(id) ?? "Unknown", dressed: dressedSet.has(id) }))
+      .sort((a, b) => {
+        if (a.dressed !== b.dressed) return a.dressed ? -1 : 1; // dressed first
+        return a.name.localeCompare(b.name);
+      });
+  };
 
-  const rosterFor = (teamId: string) =>
-    picks
-      .filter((p) => p.team_id === teamId)
-      .map((p) => ({ id: p.player_id, name: playerNameById.get(p.player_id) ?? "Unknown" }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+  const homeRoster = rosterFor(game.home_team_id);
+  const awayRoster = rosterFor(game.away_team_id);
+  const rosteredIds = new Set([...homeRoster.map((p) => p.id), ...awayRoster.map((p) => p.id)]);
+  const playerPool = allPlayers.filter((p) => !rosteredIds.has(p.id));
 
   const goalEvents = goals.map((g) => ({
     id: g.id,
@@ -82,9 +89,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
       awayScore: game.away_score,
     },
     roster: {
-      home: rosterFor(game.home_team_id),
-      away: rosterFor(game.away_team_id),
+      home: homeRoster,
+      away: awayRoster,
     },
+    playerPool,
     goalEvents,
   });
 }
@@ -94,7 +102,8 @@ type Body =
   | { action: "add-goal"; teamId: string; scorerId: string | null; assistId: string | null }
   | { action: "remove-goal"; eventId: string }
   | { action: "end" }
-  | { action: "reopen" };
+  | { action: "reopen" }
+  | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
   if (!(await isScorekeeperAuthed())) {
@@ -147,7 +156,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         assist_id: body.assistId || null,
       });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+      // A goal by a not-yet-checked-in player counts as checking them in —
+      // don't block logging on lineup bookkeeping. Same for the assist.
+      const autoCheckIns = [body.scorerId, body.assistId].filter((v): v is string => Boolean(v));
+      if (autoCheckIns.length) {
+        const { error: rosterError } = await supabase.from("game_rosters").upsert(
+          autoCheckIns.map((playerId) => ({ game_id: gameId, player_id: playerId, team_id: body.teamId })),
+          { onConflict: "game_id,player_id", ignoreDuplicates: true },
+        );
+        if (rosterError) return NextResponse.json({ ok: false, error: rosterError.message }, { status: 500 });
+      }
       break;
+    }
+
+    case "toggle-player": {
+      if (body.teamId !== game.home_team_id && body.teamId !== game.away_team_id) {
+        return NextResponse.json({ ok: false, error: "Invalid team" }, { status: 400 });
+      }
+      if (typeof body.dressed !== "boolean" || !body.playerId) {
+        return NextResponse.json({ ok: false, error: "playerId and dressed are required" }, { status: 400 });
+      }
+      if (body.dressed) {
+        const { error } = await supabase
+          .from("game_rosters")
+          .upsert(
+            { game_id: gameId, player_id: body.playerId, team_id: body.teamId },
+            { onConflict: "game_id,player_id", ignoreDuplicates: true },
+          );
+        if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      } else {
+        const { error } = await supabase
+          .from("game_rosters")
+          .delete()
+          .eq("game_id", gameId)
+          .eq("player_id", body.playerId);
+        if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      // Lineup check-in doesn't touch goal_events/game_stats, so skip
+      // recomputeGame here — otherwise a pre-game roster tap would
+      // seed home_score/away_score to 0 and make the admin editor's
+      // Save button look armed on an unplayed game.
+      return NextResponse.json({ ok: true });
     }
 
     case "remove-goal": {

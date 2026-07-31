@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { postJSON } from "./admin-api";
 import type {
   SeasonAdminGame,
+  SeasonAdminGameRoster,
   SeasonAdminGameStat,
   SeasonAdminSeries,
   SeasonAdminState,
@@ -16,7 +17,7 @@ export function AdminSeasonTab({
   state: SeasonAdminState;
   refetch: () => Promise<void>;
 }) {
-  const { seasons, activeSeason, teams, players, draftPicks, games, gameStats, playoffSeries } = state;
+  const { seasons, activeSeason, teams, players, draftPicks, games, gameStats, gameRosters, playoffSeries } = state;
 
   const seasonTeams = useMemo(
     () => teams.filter((t) => activeSeason && t.season_id === activeSeason.id).sort((a, b) => a.name.localeCompare(b.name)),
@@ -50,6 +51,7 @@ export function AdminSeasonTab({
             players={players}
             draftPicks={draftPicks}
             gameStats={gameStats}
+            gameRosters={gameRosters}
             seasonSeries={seasonSeries}
             refetch={refetch}
           />
@@ -427,6 +429,7 @@ function GamesSection({
   players,
   draftPicks,
   gameStats,
+  gameRosters,
   seasonSeries,
   refetch,
 }: {
@@ -436,6 +439,7 @@ function GamesSection({
   players: SeasonAdminState["players"];
   draftPicks: SeasonAdminState["draftPicks"];
   gameStats: SeasonAdminGameStat[];
+  gameRosters: SeasonAdminGameRoster[];
   seasonSeries: SeasonAdminSeries[];
   refetch: () => Promise<void>;
 }) {
@@ -618,6 +622,7 @@ function GamesSection({
                   players={players}
                   draftPicks={draftPicks}
                   gameStats={gameStats.filter((s) => s.game_id === game.id)}
+                  gameRosters={gameRosters.filter((r) => r.game_id === game.id)}
                   seasonSeries={seasonSeries}
                   refetch={refetch}
                 />
@@ -639,6 +644,7 @@ function GameRow({
   players,
   draftPicks,
   gameStats,
+  gameRosters,
   seasonSeries,
   refetch,
 }: {
@@ -650,6 +656,7 @@ function GameRow({
   players: SeasonAdminState["players"];
   draftPicks: SeasonAdminState["draftPicks"];
   gameStats: SeasonAdminGameStat[];
+  gameRosters: SeasonAdminGameRoster[];
   seasonSeries: SeasonAdminSeries[];
   refetch: () => Promise<void>;
 }) {
@@ -798,6 +805,7 @@ function GameRow({
               players={players}
               draftPicks={draftPicks}
               gameStats={gameStats}
+              gameRosters={gameRosters}
               refetch={refetch}
             />
           </td>
@@ -814,16 +822,23 @@ function GameStatsEditor({
   players,
   draftPicks,
   gameStats,
+  gameRosters,
   refetch,
 }: {
   game: SeasonAdminGame;
   players: SeasonAdminState["players"];
   draftPicks: SeasonAdminState["draftPicks"];
   gameStats: SeasonAdminGameStat[];
+  gameRosters: SeasonAdminGameRoster[];
   refetch: () => Promise<void>;
 }) {
   const nameByPlayerId = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
 
+  // Pre-listed players: this game's draft roster UNION checked-in (game_rosters)
+  // players — subs who dressed via the scorekeeper console but aren't on
+  // either team's draft roster still show up here for easy G/A entry. The
+  // "played" checkbox default below is untouched: it still reflects only
+  // whether a game_stats row already exists for that player.
   const rosterPlayerIds = useMemo(() => {
     const ids = new Map<string, string>(); // playerId -> teamId
     for (const pick of draftPicks) {
@@ -831,8 +846,13 @@ function GameStatsEditor({
         ids.set(pick.player_id, pick.team_id);
       }
     }
+    for (const r of gameRosters) {
+      if (r.team_id === game.home_team_id || r.team_id === game.away_team_id) {
+        ids.set(r.player_id, r.team_id);
+      }
+    }
     return ids;
-  }, [draftPicks, game.home_team_id, game.away_team_id]);
+  }, [draftPicks, gameRosters, game.home_team_id, game.away_team_id]);
 
   const initialRows = useMemo<StatDraftRow[]>(() => {
     const existingByPlayer = new Map(gameStats.map((s) => [s.player_id, s]));

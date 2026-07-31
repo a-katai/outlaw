@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getGameDetail, type GameStatLine } from "@/lib/live-season";
+import { getGameDetail, type GameStatLine, type LineupPlayer } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
 import { matchGameFilm } from "@/lib/game-film";
 import { LiveGameFeed } from "./live-game-feed";
@@ -25,6 +25,32 @@ function TeamPill({ name }: { name: string }) {
     >
       {name}
     </span>
+  );
+}
+
+function LineupCard({ teamName, players }: { teamName: string; players: LineupPlayer[] }) {
+  const colors = getTeamColors(teamName);
+  return (
+    <div className="glass-card rounded-3xl p-5">
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+          style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+        >
+          {teamName}
+        </span>
+        <span className="text-xs font-medium text-neutral-500">{players.length} dressed</span>
+      </div>
+      {players.length === 0 ? (
+        <p className="mt-3 text-sm text-neutral-500">No lineup submitted yet.</p>
+      ) : (
+        <ul className="mt-3 space-y-1 text-sm text-neutral-700">
+          {players.map((p) => (
+            <li key={p.playerId}>{p.playerName}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -69,6 +95,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const videos = videosData as VideoItem[];
   const filmMatches = matchGameFilm(videos, { date: game.date, homeTeam: game.homeTeam, awayTeam: game.awayTeam });
 
+  const hasLineups = game.lineups.home.length + game.lineups.away.length > 0;
+  const lineupsSection = hasLineups ? (
+    <div>
+      <h2 className="text-2xl font-semibold text-neutral-900">Lineups</h2>
+      <div className="mt-4 grid gap-5 sm:grid-cols-2">
+        <LineupCard teamName={game.awayTeam} players={game.lineups.away} />
+        <LineupCard teamName={game.homeTeam} players={game.lineups.home} />
+      </div>
+    </div>
+  ) : null;
+
   return (
     <section className="space-y-10">
       <div>
@@ -102,6 +139,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           <TeamPill name={game.homeTeam} />
         </h1>
       </div>
+
+      {!isFinal ? lineupsSection : null}
 
       {isFinal ? (
         <div className="glass-card rounded-3xl p-8 text-center md:p-12">
@@ -150,6 +189,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       ) : null}
+
+      {isFinal ? lineupsSection : null}
 
       {filmMatches.length > 0 ? (
         <div>

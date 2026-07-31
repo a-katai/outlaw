@@ -109,12 +109,18 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
   }));
 
   const gameIds = games.map((g) => g.id);
-  const statsRes = gameIds.length
-    ? await supabase.from("game_stats").select("game_id,player_id,team_id,goals,assists").in("game_id", gameIds)
-    : { data: [] as { game_id: string; player_id: string; team_id: string; goals: number; assists: number }[] };
+  const [statsRes, rostersRes] = await Promise.all([
+    gameIds.length
+      ? supabase.from("game_stats").select("game_id,player_id,team_id,goals,assists").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string; goals: number; assists: number }[] }),
+    gameIds.length
+      ? supabase.from("game_rosters").select("game_id,player_id,team_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string }[] }),
+  ]);
   const gameStats = statsRes.data ?? [];
+  const gameRosters = rostersRes.data ?? [];
 
-  const playerIds = Array.from(new Set(gameStats.map((s) => s.player_id)));
+  const playerIds = Array.from(new Set([...gameStats.map((s) => s.player_id), ...gameRosters.map((r) => r.player_id)]));
   const playersRes = playerIds.length
     ? await supabase.from("players").select("id,name").in("id", playerIds)
     : { data: [] as { id: string; name: string }[] };
@@ -170,8 +176,11 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
     })
     .sort((a, b) => b.points - a.points || b.diff - a.diff || b.goalsFor - a.goalsFor);
 
-  // --- Skater stats: aggregate game_stats per player. "Team" = most recent
-  // (by game date) team_id on their rows. ---
+  // --- Skater stats: GP = union of game_stats appearances and game_rosters
+  // check-ins for FINAL regular-season games — a dressed player gets GP
+  // credit even if they never touched the scoresheet. G/A are still summed
+  // purely from game_stats. "Team" = most recent (by game date) appearance
+  // across either source. ---
   const gameDateById = new Map(games.map((g) => [g.id, g.date]));
   // Only finished, regular-season games count toward GP and scoring totals —
   // playoff and live-in-progress stat lines show up on the game page, not league stats.
@@ -179,28 +188,41 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
     games.filter((g) => g.status === "final" && g.gameType === "regular").map((g) => g.id),
   );
   const finalStats = gameStats.filter((s) => finalGameIds.has(s.game_id));
-  const statsByDateAsc = [...finalStats].sort((a, b) => {
-    const da = gameDateById.get(a.game_id) ?? "";
-    const db = gameDateById.get(b.game_id) ?? "";
+  const finalRosters = gameRosters.filter((r) => finalGameIds.has(r.game_id));
+
+  type Appearance = { playerId: string; gameId: string; teamId: string };
+  const appearances: Appearance[] = [
+    ...finalStats.map((s) => ({ playerId: s.player_id, gameId: s.game_id, teamId: s.team_id })),
+    ...finalRosters.map((r) => ({ playerId: r.player_id, gameId: r.game_id, teamId: r.team_id })),
+  ];
+  const appearancesByDateAsc = [...appearances].sort((a, b) => {
+    const da = gameDateById.get(a.gameId) ?? "";
+    const db = gameDateById.get(b.gameId) ?? "";
     return da < db ? -1 : da > db ? 1 : 0;
   });
 
-  type SkaterAgg = { gp: number; goals: number; assists: number; teamId: string };
+  type SkaterAgg = { gpGames: Set<string>; goals: number; assists: number; teamId: string };
   const aggByPlayer = new Map<string, SkaterAgg>();
-  for (const s of statsByDateAsc) {
-    const existing = aggByPlayer.get(s.player_id) ?? { gp: 0, goals: 0, assists: 0, teamId: s.team_id };
-    existing.gp += 1;
+  for (const a of appearancesByDateAsc) {
+    const existing = aggByPlayer.get(a.playerId) ?? { gpGames: new Set<string>(), goals: 0, assists: 0, teamId: a.teamId };
+    existing.gpGames.add(a.gameId); // Set — union, no double-count when both sources hit the same game.
+    existing.teamId = a.teamId; // last write (ascending by date) = most recent
+    aggByPlayer.set(a.playerId, existing);
+  }
+  // Goals/assists are additive from game_stats only — every player here is
+  // already present in aggByPlayer via the appearances merge above.
+  for (const s of finalStats) {
+    const existing = aggByPlayer.get(s.player_id);
+    if (!existing) continue;
     existing.goals += s.goals;
     existing.assists += s.assists;
-    existing.teamId = s.team_id; // last write (ascending by date) = most recent
-    aggByPlayer.set(s.player_id, existing);
   }
 
   const skaters: SkaterStat[] = Array.from(aggByPlayer.entries())
     .map(([playerId, agg]) => ({
       player: playerNameById.get(playerId) ?? "Unknown",
       team: teamNameById.get(agg.teamId) ?? "Unknown",
-      gamesPlayed: agg.gp,
+      gamesPlayed: agg.gpGames.size,
       goals: agg.goals,
       assists: agg.assists,
       points: agg.goals + agg.assists,
@@ -274,6 +296,8 @@ export type GoalEventLine = {
 
 export type SeriesRef = { id: string; round: number; name: string };
 
+export type LineupPlayer = { playerId: string; playerName: string };
+
 export type GameDetail = {
   id: string;
   date: string;
@@ -291,9 +315,10 @@ export type GameDetail = {
   homeScorers: GameStatLine[];
   awayScorers: GameStatLine[];
   goalEvents: GoalEventLine[];
+  lineups: { home: LineupPlayer[]; away: LineupPlayer[] };
 };
 
-/** Fetches a single game with its box score, live goal feed, and series (if any). Public/anon read. */
+/** Fetches a single game with its box score, live goal feed, lineups, and series (if any). Public/anon read. */
 export const getGameDetail = cache(async (id: string): Promise<GameDetail | null> => {
   const supabase = createBrowserClient();
 
@@ -306,7 +331,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
   if (!game) return null;
 
   const teamIds = [game.home_team_id, game.away_team_id];
-  const [teamsRes, statsRes, goalsRes, seriesRes] = await Promise.all([
+  const [teamsRes, statsRes, goalsRes, rostersRes, seriesRes] = await Promise.all([
     supabase.from("teams").select("id,name").in("id", teamIds),
     supabase.from("game_stats").select("player_id,team_id,goals,assists").eq("game_id", id),
     supabase
@@ -314,6 +339,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
       .select("id,team_id,scorer_id,assist_id,created_at")
       .eq("game_id", id)
       .order("created_at", { ascending: true }),
+    supabase.from("game_rosters").select("player_id,team_id").eq("game_id", id),
     game.series_id
       ? supabase.from("playoff_series").select("id,round,name").eq("id", game.series_id).maybeSingle()
       : Promise.resolve({ data: null as { id: string; round: number; name: string } | null }),
@@ -325,12 +351,14 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
 
   const statRows = statsRes.data ?? [];
   const goalRows = goalsRes.data ?? [];
+  const rosterRows = rostersRes.data ?? [];
 
   const playerIds = Array.from(
     new Set([
       ...statRows.map((s) => s.player_id),
       ...goalRows.map((g) => g.scorer_id).filter((v): v is string => Boolean(v)),
       ...goalRows.map((g) => g.assist_id).filter((v): v is string => Boolean(v)),
+      ...rosterRows.map((r) => r.player_id),
     ]),
   );
   const playersRes = playerIds.length
@@ -360,6 +388,16 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     createdAt: g.created_at,
   }));
 
+  const toLineupPlayer = (r: { player_id: string }): LineupPlayer => ({
+    playerId: r.player_id,
+    playerName: playerNameById.get(r.player_id) ?? "Unknown",
+  });
+  const sortLineup = (rows: LineupPlayer[]) => [...rows].sort((a, b) => a.playerName.localeCompare(b.playerName));
+  const lineups = {
+    home: sortLineup(rosterRows.filter((r) => r.team_id === game.home_team_id).map(toLineupPlayer)),
+    away: sortLineup(rosterRows.filter((r) => r.team_id === game.away_team_id).map(toLineupPlayer)),
+  };
+
   const seriesData = seriesRes.data;
 
   return {
@@ -379,6 +417,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     homeScorers,
     awayScorers,
     goalEvents,
+    lineups,
   };
 });
 
