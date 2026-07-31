@@ -5,6 +5,7 @@ const leagueLinks = [
   { href: "/", label: "Home" },
   { href: "/schedule", label: "Schedule" },
   { href: "/stats", label: "Stats" },
+  { href: "/playoffs", label: "Playoffs" },
   { href: "/draft", label: "Draft" },
   { href: "/payments", label: "Donate" },
 ];

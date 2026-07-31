@@ -24,11 +24,15 @@ function TeamPill({ name }: { name: string }) {
 
 function GameRow({ game, prominent }: { game: LiveGame; prominent?: boolean }) {
   const isFinal = game.status === "final" && game.homeScore !== null && game.awayScore !== null;
+  const isLive = game.status === "live";
   const homeWins = isFinal && (game.homeScore as number) > (game.awayScore as number);
   const awayWins = isFinal && (game.awayScore as number) > (game.homeScore as number);
 
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-4 px-5 ${prominent ? "py-6" : "py-4"}`}>
+    <Link
+      href={`/games/${game.id}`}
+      className={`group flex flex-wrap items-center justify-between gap-4 px-5 transition hover:bg-neutral-50/80 ${prominent ? "py-6" : "py-4"}`}
+    >
       <div className="flex flex-col gap-1">
         {prominent ? <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Next game</p> : null}
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -39,8 +43,23 @@ function GameRow({ game, prominent }: { game: LiveGame; prominent?: boolean }) {
           <span className={homeWins ? "font-semibold text-neutral-900" : "text-neutral-700"}>
             <TeamPill name={game.homeTeam} />
           </span>
+          {game.gameType === "playoff" ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              Playoff
+            </span>
+          ) : null}
         </div>
-        {game.time ? <p className="text-xs text-neutral-500">{game.time}</p> : null}
+        {isLive ? (
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-rose-600">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-600" />
+            </span>
+            Live · {game.awayScore ?? 0}–{game.homeScore ?? 0}
+          </p>
+        ) : game.time ? (
+          <p className="text-xs text-neutral-500">{game.time}</p>
+        ) : null}
         {game.note ? <p className="text-xs text-neutral-500">{game.note}</p> : null}
       </div>
 
@@ -53,16 +72,20 @@ function GameRow({ game, prominent }: { game: LiveGame; prominent?: boolean }) {
           <div className={`text-lg font-semibold ${homeWins ? "text-neutral-900" : "text-neutral-400"}`}>
             {game.homeScore}
           </div>
-          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 transition group-hover:bg-neutral-200">
             Final
           </span>
         </div>
+      ) : isLive ? (
+        <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-rose-700 transition group-hover:bg-rose-200">
+          Live
+        </span>
       ) : (
-        <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+        <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 transition group-hover:border-black/20">
           Scheduled
         </span>
       )}
-    </div>
+    </Link>
   );
 }
 
@@ -96,6 +119,7 @@ export default async function SchedulePage() {
     );
   }
 
+  const live = games.filter((g) => g.status === "live");
   const upcoming = games.filter((g) => g.status === "scheduled").sort((a, b) => (a.date < b.date ? -1 : 1));
   const completed = games.filter((g) => g.status === "final").sort((a, b) => (a.date > b.date ? -1 : 1));
 
@@ -118,6 +142,17 @@ export default async function SchedulePage() {
         <p className="text-xs font-semibold tracking-[0.2em] text-neutral-500 uppercase">League Hub</p>
         <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Schedule · {season.label}</h1>
       </div>
+
+      {live.length > 0 ? (
+        <div className="space-y-5">
+          <h2 className="text-2xl font-semibold text-neutral-900">Live now</h2>
+          <div className="glass-card divide-y divide-black/5 overflow-hidden rounded-3xl">
+            {live.map((g) => (
+              <GameRow key={g.id} game={g} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {upcomingByDate.length > 0 ? (
         <div className="space-y-5">

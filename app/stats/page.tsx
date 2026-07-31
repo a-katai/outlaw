@@ -24,7 +24,7 @@ export default async function StatsPage({
       skaters: live.skaters,
       teams: live.teams,
       rosters: live.rosters,
-      hasFinalGames: live.games.some((g) => g.status === "final"),
+      hasFinalGames: live.games.some((g) => g.status === "final" && g.gameType === "regular"),
     };
   } else {
     const staticSeason = getSeason(selectedId);
@@ -35,7 +35,7 @@ export default async function StatsPage({
       skaters: live?.skaters ?? [],
       teams: live?.teams,
       rosters: live?.rosters,
-      hasFinalGames: live ? live.games.some((g) => g.status === "final") : undefined,
+      hasFinalGames: live ? live.games.some((g) => g.status === "final" && g.gameType === "regular") : undefined,
     };
   }
 

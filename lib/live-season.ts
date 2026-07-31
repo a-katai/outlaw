@@ -23,6 +23,10 @@ export type LiveRosterPlayer = {
   position: string | null;
 };
 
+export type GameType = "regular" | "playoff";
+
+export type GameStatus = "scheduled" | "live" | "final";
+
 export type LiveGame = {
   id: string;
   date: string; // ISO date, e.g. "2026-09-09"
@@ -33,8 +37,10 @@ export type LiveGame = {
   awayTeam: string;
   homeScore: number | null;
   awayScore: number | null;
-  status: "scheduled" | "final";
+  status: GameStatus;
   note: string | null;
+  gameType: GameType;
+  seriesId: string | null;
 };
 
 export type LiveSeason = {
@@ -75,9 +81,11 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
     supabase.from("teams").select("id,name").eq("season_id", seasonRow.id),
     supabase
       .from("games")
-      .select("id,game_date,game_time,home_team_id,away_team_id,home_score,away_score,status,note")
+      .select(
+        "id,game_date,game_time,home_team_id,away_team_id,home_score,away_score,status,note,game_type,series_id",
+      )
       .eq("season_id", seasonRow.id)
-      .in("status", ["scheduled", "final"])
+      .in("status", ["scheduled", "live", "final"])
       .order("game_date", { ascending: true }),
   ]);
 
@@ -94,8 +102,10 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
     awayTeam: teamNameById.get(g.away_team_id) ?? "TBD",
     homeScore: g.home_score,
     awayScore: g.away_score,
-    status: g.status as "scheduled" | "final",
+    status: g.status as GameStatus,
     note: g.note,
+    gameType: (g.game_type as GameType) ?? "regular",
+    seriesId: g.series_id,
   }));
 
   const gameIds = games.map((g) => g.id);
@@ -110,14 +120,15 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
     : { data: [] as { id: string; name: string }[] };
   const playerNameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
 
-  // --- Standings: FINAL games only. ---
+  // --- Standings: FINAL, regular-season games only. Playoff games never
+  // touch the standings — they appear on game pages and /playoffs instead. ---
   type TeamRecord = { gp: number; wins: number; losses: number; ties: number; gf: number; ga: number };
   const recordByTeam = new Map<string, TeamRecord>(
     teams.map((t) => [t.id, { gp: 0, wins: 0, losses: 0, ties: 0, gf: 0, ga: 0 }]),
   );
 
   for (const g of games) {
-    if (g.status !== "final" || g.homeScore === null || g.awayScore === null) continue;
+    if (g.gameType !== "regular" || g.status !== "final" || g.homeScore === null || g.awayScore === null) continue;
     const home = recordByTeam.get(g.homeTeamId);
     const away = recordByTeam.get(g.awayTeamId);
     if (!home || !away) continue;
@@ -162,8 +173,11 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
   // --- Skater stats: aggregate game_stats per player. "Team" = most recent
   // (by game date) team_id on their rows. ---
   const gameDateById = new Map(games.map((g) => [g.id, g.date]));
-  // Only finished games count toward GP and scoring totals.
-  const finalGameIds = new Set(games.filter((g) => g.status === "final").map((g) => g.id));
+  // Only finished, regular-season games count toward GP and scoring totals —
+  // playoff and live-in-progress stat lines show up on the game page, not league stats.
+  const finalGameIds = new Set(
+    games.filter((g) => g.status === "final" && g.gameType === "regular").map((g) => g.id),
+  );
   const finalStats = gameStats.filter((s) => finalGameIds.has(s.game_id));
   const statsByDateAsc = [...finalStats].sort((a, b) => {
     const da = gameDateById.get(a.game_id) ?? "";
@@ -243,4 +257,281 @@ export const getSeasonCatalogue = cache(async (): Promise<SeasonSummary[]> => {
     : [];
 
   return [...liveEntry, ...staticEntries];
+});
+
+// --- Game page ---
+
+export type GameStatLine = { playerId: string; playerName: string; goals: number; assists: number };
+
+export type GoalEventLine = {
+  id: string;
+  teamId: string;
+  teamName: string;
+  scorerName: string | null;
+  assistName: string | null;
+  createdAt: string;
+};
+
+export type SeriesRef = { id: string; round: number; name: string };
+
+export type GameDetail = {
+  id: string;
+  date: string;
+  time: string | null;
+  status: GameStatus;
+  gameType: GameType;
+  note: string | null;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  series: SeriesRef | null;
+  homeScorers: GameStatLine[];
+  awayScorers: GameStatLine[];
+  goalEvents: GoalEventLine[];
+};
+
+/** Fetches a single game with its box score, live goal feed, and series (if any). Public/anon read. */
+export const getGameDetail = cache(async (id: string): Promise<GameDetail | null> => {
+  const supabase = createBrowserClient();
+
+  const { data: game } = await supabase
+    .from("games")
+    .select("id,game_date,game_time,home_team_id,away_team_id,home_score,away_score,status,note,game_type,series_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!game) return null;
+
+  const teamIds = [game.home_team_id, game.away_team_id];
+  const [teamsRes, statsRes, goalsRes, seriesRes] = await Promise.all([
+    supabase.from("teams").select("id,name").in("id", teamIds),
+    supabase.from("game_stats").select("player_id,team_id,goals,assists").eq("game_id", id),
+    supabase
+      .from("goal_events")
+      .select("id,team_id,scorer_id,assist_id,created_at")
+      .eq("game_id", id)
+      .order("created_at", { ascending: true }),
+    game.series_id
+      ? supabase.from("playoff_series").select("id,round,name").eq("id", game.series_id).maybeSingle()
+      : Promise.resolve({ data: null as { id: string; round: number; name: string } | null }),
+  ]);
+
+  const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
+  const homeTeam = teamNameById.get(game.home_team_id) ?? "TBD";
+  const awayTeam = teamNameById.get(game.away_team_id) ?? "TBD";
+
+  const statRows = statsRes.data ?? [];
+  const goalRows = goalsRes.data ?? [];
+
+  const playerIds = Array.from(
+    new Set([
+      ...statRows.map((s) => s.player_id),
+      ...goalRows.map((g) => g.scorer_id).filter((v): v is string => Boolean(v)),
+      ...goalRows.map((g) => g.assist_id).filter((v): v is string => Boolean(v)),
+    ]),
+  );
+  const playersRes = playerIds.length
+    ? await supabase.from("players").select("id,name").in("id", playerIds)
+    : { data: [] as { id: string; name: string }[] };
+  const playerNameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
+
+  const toLine = (s: { player_id: string; goals: number; assists: number }): GameStatLine => ({
+    playerId: s.player_id,
+    playerName: playerNameById.get(s.player_id) ?? "Unknown",
+    goals: s.goals,
+    assists: s.assists,
+  });
+
+  const sortScorers = (rows: GameStatLine[]) =>
+    [...rows].sort((a, b) => b.goals - a.goals || b.assists - a.assists || a.playerName.localeCompare(b.playerName));
+
+  const homeScorers = sortScorers(statRows.filter((s) => s.team_id === game.home_team_id).map(toLine));
+  const awayScorers = sortScorers(statRows.filter((s) => s.team_id === game.away_team_id).map(toLine));
+
+  const goalEvents: GoalEventLine[] = goalRows.map((g) => ({
+    id: g.id,
+    teamId: g.team_id,
+    teamName: teamNameById.get(g.team_id) ?? "Unknown",
+    scorerName: g.scorer_id ? (playerNameById.get(g.scorer_id) ?? "Unknown") : null,
+    assistName: g.assist_id ? (playerNameById.get(g.assist_id) ?? "Unknown") : null,
+    createdAt: g.created_at,
+  }));
+
+  const seriesData = seriesRes.data;
+
+  return {
+    id: game.id,
+    date: game.game_date,
+    time: game.game_time,
+    status: game.status as GameStatus,
+    gameType: (game.game_type as GameType) ?? "regular",
+    note: game.note,
+    homeTeamId: game.home_team_id,
+    awayTeamId: game.away_team_id,
+    homeTeam,
+    awayTeam,
+    homeScore: game.home_score,
+    awayScore: game.away_score,
+    series: seriesData ? { id: seriesData.id, round: seriesData.round, name: seriesData.name } : null,
+    homeScorers,
+    awayScorers,
+    goalEvents,
+  };
+});
+
+// --- Playoffs bracket ---
+
+export type PlayoffGameChip = {
+  id: string;
+  date: string;
+  status: GameStatus;
+  homeScore: number | null;
+  awayScore: number | null;
+  homeTeamId: string;
+  awayTeamId: string;
+};
+
+export type PlayoffSeriesView = {
+  id: string;
+  round: number;
+  name: string;
+  position: number;
+  bestOf: number;
+  teamAId: string | null;
+  teamBId: string | null;
+  teamAName: string | null;
+  teamBName: string | null;
+  winnerTeamId: string | null;
+  winnerTeamName: string | null;
+  teamAWins: number;
+  teamBWins: number;
+  games: PlayoffGameChip[];
+};
+
+export type PlayoffBracket = {
+  seasonId: string;
+  seasonLabel: string;
+  rounds: { round: number; name: string; series: PlayoffSeriesView[] }[];
+  champion: { seriesId: string; teamId: string; teamName: string } | null;
+};
+
+/** Fetches the active season's playoff bracket: series grouped by round, with linked games. Public/anon read. */
+export const getPlayoffBracket = cache(async (): Promise<PlayoffBracket | null> => {
+  const supabase = createBrowserClient();
+
+  const { data: seasonRow } = await supabase
+    .from("seasons")
+    .select("id,label,status")
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!seasonRow) return null;
+
+  const { data: seriesRows } = await supabase
+    .from("playoff_series")
+    .select("id,season_id,round,name,position,team_a,team_b,best_of,winner_team_id")
+    .eq("season_id", seasonRow.id)
+    .order("round", { ascending: true })
+    .order("position", { ascending: true });
+
+  const series = seriesRows ?? [];
+  if (series.length === 0) {
+    return { seasonId: seasonRow.id, seasonLabel: seasonRow.label, rounds: [], champion: null };
+  }
+
+  const seriesIds = series.map((s) => s.id);
+  const teamIds = Array.from(
+    new Set(series.flatMap((s) => [s.team_a, s.team_b, s.winner_team_id]).filter((v): v is string => Boolean(v))),
+  );
+
+  const [teamsRes, gamesRes] = await Promise.all([
+    teamIds.length
+      ? supabase.from("teams").select("id,name").in("id", teamIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    supabase
+      .from("games")
+      .select("id,game_date,status,home_score,away_score,home_team_id,away_team_id,series_id")
+      .in("series_id", seriesIds),
+  ]);
+
+  const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
+
+  type SeriesGameRow = {
+    id: string;
+    game_date: string;
+    status: string;
+    home_score: number | null;
+    away_score: number | null;
+    home_team_id: string;
+    away_team_id: string;
+    series_id: string | null;
+  };
+
+  const gamesBySeries = new Map<string, SeriesGameRow[]>();
+  for (const g of (gamesRes.data ?? []) as SeriesGameRow[]) {
+    if (!g.series_id) continue;
+    const list = gamesBySeries.get(g.series_id) ?? [];
+    list.push(g);
+    gamesBySeries.set(g.series_id, list);
+  }
+
+  const seriesViews: PlayoffSeriesView[] = series.map((s) => {
+    const games = (gamesBySeries.get(s.id) ?? []).sort((a, b) => (a.game_date < b.game_date ? -1 : 1));
+    let teamAWins = 0;
+    let teamBWins = 0;
+    for (const g of games) {
+      if (g.status !== "final" || g.home_score === null || g.away_score === null) continue;
+      const winnerTeamId =
+        g.home_score > g.away_score ? g.home_team_id : g.away_score > g.home_score ? g.away_team_id : null;
+      if (!winnerTeamId) continue;
+      if (winnerTeamId === s.team_a) teamAWins += 1;
+      else if (winnerTeamId === s.team_b) teamBWins += 1;
+    }
+    return {
+      id: s.id,
+      round: s.round,
+      name: s.name,
+      position: s.position,
+      bestOf: s.best_of,
+      teamAId: s.team_a,
+      teamBId: s.team_b,
+      teamAName: s.team_a ? (teamNameById.get(s.team_a) ?? "TBD") : null,
+      teamBName: s.team_b ? (teamNameById.get(s.team_b) ?? "TBD") : null,
+      winnerTeamId: s.winner_team_id,
+      winnerTeamName: s.winner_team_id ? (teamNameById.get(s.winner_team_id) ?? null) : null,
+      teamAWins,
+      teamBWins,
+      games: games.map((g) => ({
+        id: g.id,
+        date: g.game_date,
+        status: g.status as GameStatus,
+        homeScore: g.home_score,
+        awayScore: g.away_score,
+        homeTeamId: g.home_team_id,
+        awayTeamId: g.away_team_id,
+      })),
+    };
+  });
+
+  const roundsMap = new Map<number, { round: number; name: string; series: PlayoffSeriesView[] }>();
+  for (const sv of seriesViews) {
+    const bucket = roundsMap.get(sv.round) ?? { round: sv.round, name: sv.name, series: [] };
+    bucket.series.push(sv);
+    roundsMap.set(sv.round, bucket);
+  }
+  const rounds = Array.from(roundsMap.values()).sort((a, b) => a.round - b.round);
+  for (const r of rounds) r.series.sort((a, b) => a.position - b.position);
+
+  const maxRound = Math.max(...series.map((s) => s.round));
+  const finalRoundSeries = seriesViews.filter((s) => s.round === maxRound);
+  const championSeries = finalRoundSeries.find((s) => s.winnerTeamId);
+  const champion =
+    championSeries && championSeries.winnerTeamId
+      ? { seriesId: championSeries.id, teamId: championSeries.winnerTeamId, teamName: championSeries.winnerTeamName ?? "TBD" }
+      : null;
+
+  return { seasonId: seasonRow.id, seasonLabel: seasonRow.label, rounds, champion };
 });

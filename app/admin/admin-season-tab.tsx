@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { postJSON } from "./admin-api";
 import type {
   SeasonAdminGame,
   SeasonAdminGameStat,
+  SeasonAdminSeries,
   SeasonAdminState,
 } from "./admin-season-api";
 
@@ -15,7 +16,7 @@ export function AdminSeasonTab({
   state: SeasonAdminState;
   refetch: () => Promise<void>;
 }) {
-  const { seasons, activeSeason, teams, players, draftPicks, games, gameStats } = state;
+  const { seasons, activeSeason, teams, players, draftPicks, games, gameStats, playoffSeries } = state;
 
   const seasonTeams = useMemo(
     () => teams.filter((t) => activeSeason && t.season_id === activeSeason.id).sort((a, b) => a.name.localeCompare(b.name)),
@@ -25,10 +26,15 @@ export function AdminSeasonTab({
     () => teams.filter((t) => t.draft_order !== null && (!activeSeason || t.season_id !== activeSeason.id)),
     [teams, activeSeason],
   );
+  const seasonSeries = useMemo(
+    () => playoffSeries.filter((s) => activeSeason && s.season_id === activeSeason.id),
+    [playoffSeries, activeSeason],
+  );
 
   return (
     <div className="space-y-8">
       <SeasonHeader seasons={seasons} activeSeason={activeSeason} refetch={refetch} />
+      <ScorekeeperAccess />
       {activeSeason ? (
         <>
           <TeamsForSeason
@@ -44,6 +50,14 @@ export function AdminSeasonTab({
             players={players}
             draftPicks={draftPicks}
             gameStats={gameStats}
+            seasonSeries={seasonSeries}
+            refetch={refetch}
+          />
+          <PlayoffsSection
+            activeSeasonId={activeSeason.id}
+            seasonTeams={seasonTeams}
+            playoffSeries={seasonSeries}
+            games={games}
             refetch={refetch}
           />
         </>
@@ -52,6 +66,64 @@ export function AdminSeasonTab({
           No active season. Create one or set one active above.
         </div>
       )}
+    </div>
+  );
+}
+
+function ScorekeeperAccess() {
+  const [code, setCode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const res = await fetch("/api/admin/season/access-code", { cache: "no-store" });
+      const data = await res.json();
+      setCode(data.ok ? (data.code ?? null) : null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const generate = async () => {
+    setBusy(true);
+    setError(null);
+    const data = await postJSON<{ ok: boolean; code?: string; error?: string }>("/api/admin/season/access-code", {
+      action: "generate",
+    });
+    setBusy(false);
+    if (!data.ok) return setError(data.error ?? "Couldn't generate a code");
+    setCode(data.code ?? null);
+  };
+
+  return (
+    <div className="glass-card rounded-3xl p-6 md:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Scorekeeper access</p>
+          <p className="mt-1 text-2xl font-semibold tracking-[0.3em] text-neutral-900">
+            {loading ? "…" : (code ?? "None yet")}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={generate}
+          className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+        >
+          {busy ? "Generating…" : "Generate new code"}
+        </button>
+      </div>
+      {error ? <p className="mt-3 text-sm font-medium text-rose-600">{error}</p> : null}
+      <p className="mt-3 text-xs text-neutral-500">
+        Anyone with this code can sign in at /scorekeeper and log live goals. Generating a new code doesn&apos;t sign out
+        devices already using the old one until they log out.
+      </p>
     </div>
   );
 }
@@ -355,6 +427,7 @@ function GamesSection({
   players,
   draftPicks,
   gameStats,
+  seasonSeries,
   refetch,
 }: {
   activeSeasonId: string;
@@ -363,12 +436,15 @@ function GamesSection({
   players: SeasonAdminState["players"];
   draftPicks: SeasonAdminState["draftPicks"];
   gameStats: SeasonAdminGameStat[];
+  seasonSeries: SeasonAdminSeries[];
   refetch: () => Promise<void>;
 }) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [homeTeamId, setHomeTeamId] = useState("");
   const [awayTeamId, setAwayTeamId] = useState("");
+  const [gameType, setGameType] = useState<"regular" | "playoff">("regular");
+  const [seriesId, setSeriesId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
@@ -391,6 +467,8 @@ function GamesSection({
       time: time || null,
       homeTeamId,
       awayTeamId,
+      gameType,
+      seriesId: gameType === "playoff" && seriesId ? seriesId : null,
     });
     setBusy(false);
     if (!data.ok) return setError(data.error ?? "Couldn't add game");
@@ -398,6 +476,8 @@ function GamesSection({
     setTime("");
     setHomeTeamId("");
     setAwayTeamId("");
+    setGameType("regular");
+    setSeriesId("");
     await refetch();
   };
 
@@ -458,6 +538,46 @@ function GamesSection({
             ))}
           </select>
         </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Type</span>
+          <div className="inline-flex rounded-xl border border-black/10 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setGameType("regular")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                gameType === "regular" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              Regular
+            </button>
+            <button
+              type="button"
+              onClick={() => setGameType("playoff")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                gameType === "playoff" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              Playoff
+            </button>
+          </div>
+        </label>
+        {gameType === "playoff" ? (
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-neutral-700">Series</span>
+            <select
+              className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+              value={seriesId}
+              onChange={(e) => setSeriesId(e.target.value)}
+            >
+              <option value="">No series</option>
+              {seasonSeries.map((s) => (
+                <option key={s.id} value={s.id}>
+                  Round {s.round} · {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <button
           type="submit"
           disabled={busy}
@@ -498,6 +618,7 @@ function GamesSection({
                   players={players}
                   draftPicks={draftPicks}
                   gameStats={gameStats.filter((s) => s.game_id === game.id)}
+                  seasonSeries={seasonSeries}
                   refetch={refetch}
                 />
               ))
@@ -518,6 +639,7 @@ function GameRow({
   players,
   draftPicks,
   gameStats,
+  seasonSeries,
   refetch,
 }: {
   game: SeasonAdminGame;
@@ -528,12 +650,21 @@ function GameRow({
   players: SeasonAdminState["players"];
   draftPicks: SeasonAdminState["draftPicks"];
   gameStats: SeasonAdminGameStat[];
+  seasonSeries: SeasonAdminSeries[];
   refetch: () => Promise<void>;
 }) {
   const [homeScore, setHomeScore] = useState(game.home_score?.toString() ?? "");
   const [awayScore, setAwayScore] = useState(game.away_score?.toString() ?? "");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [seriesBusy, setSeriesBusy] = useState(false);
+
+  const assignSeries = async (nextSeriesId: string) => {
+    setSeriesBusy(true);
+    await postJSON("/api/admin/season/games", { action: "assign-series", id: game.id, seriesId: nextSeriesId || null });
+    setSeriesBusy(false);
+    await refetch();
+  };
 
   const saveScore = async () => {
     setBusy(true);
@@ -570,7 +701,31 @@ function GameRow({
           {game.game_time ? <span className="ml-1 text-xs text-neutral-500">{game.game_time}</span> : null}
         </td>
         <td className="px-4 py-3 font-medium text-neutral-900">
-          {awayTeamName} @ {homeTeamName}
+          <div className="flex items-center gap-2">
+            <span>
+              {awayTeamName} @ {homeTeamName}
+            </span>
+            {game.game_type === "playoff" ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800">
+                Playoff
+              </span>
+            ) : null}
+          </div>
+          {game.game_type === "playoff" ? (
+            <select
+              disabled={seriesBusy}
+              value={game.series_id ?? ""}
+              onChange={(e) => assignSeries(e.target.value)}
+              className="mt-1.5 rounded-lg border border-black/10 bg-white px-2 py-1 text-xs font-normal text-neutral-600 outline-none ring-blue-500/30 focus:ring-4"
+            >
+              <option value="">No series</option>
+              {seasonSeries.map((s) => (
+                <option key={s.id} value={s.id}>
+                  Round {s.round} · {s.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
         </td>
         <td className="px-4 py-3">
           <div className="flex items-center gap-1.5">
@@ -602,6 +757,8 @@ function GameRow({
         <td className="px-4 py-3">
           {game.status === "final" ? (
             <span className="text-xs font-semibold text-emerald-700">Final</span>
+          ) : game.status === "live" ? (
+            <span className="text-xs font-semibold text-rose-600">Live</span>
           ) : (
             <span className="text-xs font-semibold text-neutral-500">Scheduled</span>
           )}
@@ -844,5 +1001,337 @@ function GameStatsEditor({
         {message ? <p className="text-xs font-medium text-neutral-600">{message}</p> : null}
       </div>
     </div>
+  );
+}
+
+function PlayoffsSection({
+  activeSeasonId,
+  seasonTeams,
+  playoffSeries,
+  games,
+  refetch,
+}: {
+  activeSeasonId: string;
+  seasonTeams: SeasonAdminState["teams"];
+  playoffSeries: SeasonAdminSeries[];
+  games: SeasonAdminGame[];
+  refetch: () => Promise<void>;
+}) {
+  const nameByTeamId = useMemo(() => new Map(seasonTeams.map((t) => [t.id, t.name])), [seasonTeams]);
+  const linkedGameCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of games) {
+      if (!g.series_id) continue;
+      map.set(g.series_id, (map.get(g.series_id) ?? 0) + 1);
+    }
+    return map;
+  }, [games]);
+
+  const [round, setRound] = useState("1");
+  const [name, setName] = useState("");
+  const [position, setPosition] = useState("1");
+  const [bestOf, setBestOf] = useState("3");
+  const [teamA, setTeamA] = useState("");
+  const [teamB, setTeamB] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const sortedSeries = useMemo(
+    () => [...playoffSeries].sort((a, b) => a.round - b.round || a.position - b.position),
+    [playoffSeries],
+  );
+
+  const create = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const data = await postJSON<{ ok: boolean; error?: string }>("/api/admin/season/playoffs", {
+      action: "create",
+      seasonId: activeSeasonId,
+      round: Number(round) || 1,
+      name,
+      position: Number(position) || 1,
+      bestOf: Number(bestOf) || 3,
+      teamA: teamA || null,
+      teamB: teamB || null,
+    });
+    setBusy(false);
+    if (!data.ok) return setError(data.error ?? "Couldn't create series");
+    setName("");
+    setTeamA("");
+    setTeamB("");
+    await refetch();
+  };
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold text-neutral-900">Playoffs</h2>
+
+      <form onSubmit={create} className="glass-card mt-4 flex flex-wrap items-end gap-3 rounded-3xl p-5">
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Round</span>
+          <input
+            type="number"
+            min={1}
+            value={round}
+            onChange={(e) => setRound(e.target.value)}
+            className="w-20 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+            required
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Name</span>
+          <input
+            type="text"
+            placeholder="Semifinals"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-40 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+            required
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Position</span>
+          <input
+            type="number"
+            min={1}
+            value={position}
+            onChange={(e) => setPosition(e.target.value)}
+            className="w-20 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Best of</span>
+          <input
+            type="number"
+            min={1}
+            value={bestOf}
+            onChange={(e) => setBestOf(e.target.value)}
+            className="w-20 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Team A</span>
+          <select
+            value={teamA}
+            onChange={(e) => setTeamA(e.target.value)}
+            className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+          >
+            <option value="">TBD</option>
+            {seasonTeams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-sm">
+          <span className="font-medium text-neutral-700">Team B</span>
+          <select
+            value={teamB}
+            onChange={(e) => setTeamB(e.target.value)}
+            className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+          >
+            <option value="">TBD</option>
+            {seasonTeams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={busy}
+          className="rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+        >
+          {busy ? "Creating…" : "Create series"}
+        </button>
+        {error ? <p className="w-full text-sm font-medium text-rose-600">{error}</p> : null}
+      </form>
+
+      <div className="glass-card mt-4 overflow-x-auto rounded-3xl">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
+            <tr>
+              <th className="px-4 py-3">Round</th>
+              <th className="px-4 py-3">Series</th>
+              <th className="px-4 py-3">Teams</th>
+              <th className="px-4 py-3">Games</th>
+              <th className="px-4 py-3">Winner</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {sortedSeries.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-neutral-500">
+                  No playoff series yet.
+                </td>
+              </tr>
+            ) : (
+              sortedSeries.map((s) => (
+                <SeriesRow
+                  key={s.id}
+                  series={s}
+                  seasonTeams={seasonTeams}
+                  nameByTeamId={nameByTeamId}
+                  linkedGameCount={linkedGameCount.get(s.id) ?? 0}
+                  refetch={refetch}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SeriesRow({
+  series,
+  seasonTeams,
+  nameByTeamId,
+  linkedGameCount,
+  refetch,
+}: {
+  series: SeasonAdminSeries;
+  seasonTeams: SeasonAdminState["teams"];
+  nameByTeamId: Map<string, string>;
+  linkedGameCount: number;
+  refetch: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [teamA, setTeamA] = useState(series.team_a ?? "");
+  const [teamB, setTeamB] = useState(series.team_b ?? "");
+  const [winnerTeamId, setWinnerTeamId] = useState(series.winner_team_id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const saveTeams = async () => {
+    setBusy(true);
+    await postJSON("/api/admin/season/playoffs", {
+      action: "edit-teams",
+      id: series.id,
+      teamA: teamA || null,
+      teamB: teamB || null,
+    });
+    setBusy(false);
+    setEditing(false);
+    await refetch();
+  };
+
+  const saveWinner = async () => {
+    setBusy(true);
+    if (winnerTeamId) {
+      await postJSON("/api/admin/season/playoffs", { action: "set-winner", id: series.id, winnerTeamId });
+    } else {
+      await postJSON("/api/admin/season/playoffs", { action: "clear-winner", id: series.id });
+    }
+    setBusy(false);
+    await refetch();
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    await postJSON("/api/admin/season/playoffs", { action: "delete", id: series.id });
+    setBusy(false);
+    setConfirmDelete(false);
+    await refetch();
+  };
+
+  const teamOptions = [series.team_a, series.team_b].filter((id): id is string => Boolean(id));
+
+  return (
+    <tr className="border-t border-black/5 text-neutral-700">
+      <td className="px-4 py-3">{series.round}</td>
+      <td className="px-4 py-3 font-medium text-neutral-900">{series.name}</td>
+      <td className="px-4 py-3">
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <select
+              value={teamA}
+              onChange={(e) => setTeamA(e.target.value)}
+              className="rounded-lg border border-black/10 bg-white px-2 py-1 text-xs"
+            >
+              <option value="">TBD</option>
+              {seasonTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-neutral-400">vs</span>
+            <select
+              value={teamB}
+              onChange={(e) => setTeamB(e.target.value)}
+              className="rounded-lg border border-black/10 bg-white px-2 py-1 text-xs"
+            >
+              <option value="">TBD</option>
+              {seasonTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" disabled={busy} onClick={saveTeams} className="text-xs font-semibold text-neutral-700 hover:text-neutral-900">
+              Save
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setEditing(true)} className="text-left hover:underline">
+            {(series.team_a ? nameByTeamId.get(series.team_a) : null) ?? "TBD"} vs{" "}
+            {(series.team_b ? nameByTeamId.get(series.team_b) : null) ?? "TBD"}
+          </button>
+        )}
+      </td>
+      <td className="px-4 py-3">{linkedGameCount}</td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <select
+            value={winnerTeamId}
+            onChange={(e) => setWinnerTeamId(e.target.value)}
+            className="rounded-lg border border-black/10 bg-white px-2 py-1 text-xs"
+          >
+            <option value="">None</option>
+            {teamOptions.map((id) => (
+              <option key={id} value={id}>
+                {nameByTeamId.get(id) ?? "Unknown"}
+              </option>
+            ))}
+          </select>
+          <button type="button" disabled={busy} onClick={saveWinner} className="text-xs font-semibold text-neutral-700 hover:text-neutral-900">
+            Set
+          </button>
+        </div>
+        {series.winner_team_id ? (
+          <p className="mt-1 text-xs font-semibold text-amber-700">{nameByTeamId.get(series.winner_team_id) ?? "Unknown"} wins</p>
+        ) : null}
+      </td>
+      <td className="px-4 py-3 text-right">
+        {confirmDelete ? (
+          <>
+            <button type="button" onClick={remove} className="text-xs font-semibold text-rose-600 hover:text-rose-800">
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="ml-2 text-xs font-medium text-neutral-500 hover:text-neutral-800"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs font-medium text-neutral-500 hover:text-rose-600"
+          >
+            Delete
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }

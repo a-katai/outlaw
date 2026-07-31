@@ -11,10 +11,13 @@ type Body =
       homeTeamId: string;
       awayTeamId: string;
       note?: string | null;
+      gameType?: "regular" | "playoff";
+      seriesId?: string | null;
     }
   | { action: "set-score"; id: string; homeScore: number; awayScore: number }
   | { action: "revert"; id: string }
-  | { action: "delete"; id: string };
+  | { action: "delete"; id: string }
+  | { action: "assign-series"; id: string; seriesId: string | null };
 
 export async function POST(req: NextRequest) {
   if (!(await isAdminAuthed())) {
@@ -47,7 +50,20 @@ export async function POST(req: NextRequest) {
           home_team_id: body.homeTeamId,
           away_team_id: body.awayTeamId,
           note: body.note ?? null,
+          game_type: body.gameType ?? "regular",
+          series_id: body.gameType === "playoff" ? (body.seriesId ?? null) : null,
         })
+        .select("*")
+        .single();
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, game: data });
+    }
+
+    case "assign-series": {
+      const { data, error } = await supabase
+        .from("games")
+        .update({ series_id: body.seriesId ?? null })
+        .eq("id", body.id)
         .select("*")
         .single();
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

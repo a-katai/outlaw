@@ -30,8 +30,10 @@ export type SeasonAdminGame = {
   away_team_id: string;
   home_score: number | null;
   away_score: number | null;
-  status: "scheduled" | "final";
+  status: "scheduled" | "live" | "final";
   note: string | null;
+  game_type: "regular" | "playoff";
+  series_id: string | null;
   created_at: string;
 };
 
@@ -44,6 +46,19 @@ export type SeasonAdminGameStat = {
   assists: number;
 };
 
+export type SeasonAdminSeries = {
+  id: string;
+  season_id: string;
+  round: number;
+  name: string;
+  position: number;
+  team_a: string | null;
+  team_b: string | null;
+  best_of: number;
+  winner_team_id: string | null;
+  created_at: string;
+};
+
 export type SeasonAdminState = {
   ok: true;
   seasons: SeasonRow[];
@@ -53,6 +68,7 @@ export type SeasonAdminState = {
   draftPicks: SeasonAdminPick[];
   games: SeasonAdminGame[];
   gameStats: SeasonAdminGameStat[];
+  playoffSeries: SeasonAdminSeries[];
 };
 
 export async function fetchSeasonAdminState(): Promise<SeasonAdminState | null> {

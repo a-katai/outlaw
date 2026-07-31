@@ -29,6 +29,7 @@ export async function GET() {
 
   let games: unknown[] = [];
   let gameStats: unknown[] = [];
+  let playoffSeries: unknown[] = [];
   if (activeSeason) {
     const gamesRes = await supabase
       .from("games")
@@ -44,6 +45,15 @@ export async function GET() {
       if (statsRes.error) return NextResponse.json({ ok: false, error: statsRes.error.message }, { status: 500 });
       gameStats = statsRes.data ?? [];
     }
+
+    const seriesRes = await supabase
+      .from("playoff_series")
+      .select("*")
+      .eq("season_id", activeSeason.id)
+      .order("round", { ascending: true })
+      .order("position", { ascending: true });
+    if (seriesRes.error) return NextResponse.json({ ok: false, error: seriesRes.error.message }, { status: 500 });
+    playoffSeries = seriesRes.data ?? [];
   }
 
   return NextResponse.json({
@@ -55,6 +65,7 @@ export async function GET() {
     draftPicks: picksRes.data ?? [],
     games,
     gameStats,
+    playoffSeries,
   });
 }
 
