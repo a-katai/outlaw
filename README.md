@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Outlaw Hockey League
 
-## Getting Started
+League site for the Outlaw Hockey League: stats, schedule, a donation page, a
+video gallery, a live draft board with a captain pick flow, and an admin
+console for running the draft and tracking payments.
 
-First, run the development server:
+Next.js 16 (App Router) + Tailwind 4, running on bun. Static league data
+(standings/skaters) lives in `lib/league-data.ts`; the draft and payments
+ledger are backed by Supabase (project ref `cqltfdekmfxlsgrvxtlr`).
+
+## Commands
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install       # install dependencies
+bun run dev       # local dev server
+bun run build     # production build
+bun run start     # run the production build
+bun run lint      # eslint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Set in `.env.local` (never commit this file):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_PASSWORD`
+- `CLOVER_PUBLIC_TOKEN`, `CLOVER_PRIVATE_TOKEN` — live Clover eCommerce merchant, used by `/payments` and its charge API route.
+- `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` — used for running migrations, not by the app at runtime.
 
-## Learn More
+## Pages
 
-To learn more about Next.js, take a look at the following resources:
+- `/` `/stats` `/schedule` `/payments` `/videos` — existing static pages, untouched.
+- `/draft` — public live draft board. Realtime (Supabase `postgres_changes`
+  on `drafts` + `draft_picks`) with a 15s poll fallback. Shows round/pick,
+  team on the clock, the round x team grid (chronological list on mobile),
+  available players, and per-team rosters. Clean empty state before the
+  draft starts, final rosters view once it's complete.
+- `/draft/pick` — captain view. Enter your team's pick code (persisted in
+  `localStorage`); make picks with a confirm step. Server-validates every
+  pick through the `make_pick` RPC, so a captain can't pick out of turn or
+  with someone else's code even if the UI is bypassed.
+- `/admin` — password-gated (httpOnly cookie). Draft control tab: create a
+  draft, manage teams (order, captain, pick codes), manage the player pool
+  (single add + bulk paste), start/pause/resume, undo, commissioner
+  force-pick, reset. Payments tab: log payments (by player or free-text
+  payer), ledger with delete, summary cards, per-player paid/unpaid rollup,
+  CSV export. Linked only from the site footer — not in the main nav.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Draft-night runbook
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Sign in at `/admin` (ADMIN_PASSWORD, from the keychain/env — not printed
+   here).
+2. **Create teams** — add each team with its draft order (1..N).
+3. **Import the pool** — bulk-paste the player list, one per line, optional
+   trailing `F`/`D`/`G` (e.g. `Mike Smith F`).
+4. **Generate codes** — click "Generate code" per team, copy it, and send it
+   to that team's captain. Codes are shown only on this admin screen; there's
+   no way to view them from the public site.
+5. **Start the draft.** The board at `/draft` goes live immediately; captains
+   pick at `/draft/pick` using their code.
+6. If a captain is stuck, use **commissioner force-pick** — it picks on
+   their behalf without needing their code.
+7. **Undo** rolls back the most recent pick and re-opens that slot. **Reset**
+   wipes all picks and returns the draft to setup (double-confirm; use
+   sparingly).
 
-## Deploy on Vercel
+## Payments ledger
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`/payments` is a real Clover-powered dues page — players pay by card and the
+charge is logged straight to the ledger (no admin step). Cash/check/venmo/etc.
+still get logged manually under the admin Payments tab, which also has the
+per-player paid/unpaid rollup and CSV export.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes on the Supabase layer
+
+- RLS: `players`, `teams`, `drafts`, `draft_picks` are public-read. `team_codes`
+  and `payments`, plus the `make_pick` / `undo_last_pick` / `team_on_clock`
+  functions, are service-role only — the browser never sees a pick code or a
+  payment record. See `supabase/migrations/0001_draft_and_payments.sql`.
+- Realtime is enabled on `drafts` and `draft_picks` for the live board.

@@ -10,6 +10,7 @@ const LOGO = "/ohl_logo_letters.png";
 const menuLinks = [
   { href: "/", label: "Home" },
   { href: "/stats", label: "Stats" },
+  { href: "/draft", label: "Draft" },
   { href: "/schedule", label: "Schedule" },
   { href: "/payments", label: "Donate" },
   { href: "/videos", label: "Videos" },
