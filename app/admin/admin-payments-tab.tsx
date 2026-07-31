@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { Fragment, FormEvent, useMemo, useState } from "react";
 import type { PaymentMethod } from "@/lib/draft-types";
 import { AdminState, formatCents, postJSON } from "./admin-api";
 
@@ -23,11 +23,26 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
 
   const nameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
 
   const totalCents = payments.reduce((sum, p) => sum + p.amount_cents, 0);
   const paidPlayerIds = new Set(payments.filter((p) => p.player_id).map((p) => p.player_id as string));
+
+  const paymentsByPlayer = useMemo(() => {
+    const map = new Map<string, typeof payments>();
+    for (const p of payments) {
+      if (!p.player_id) continue;
+      const list = map.get(p.player_id) ?? [];
+      list.push(p);
+      map.set(p.player_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.paid_on < b.paid_on ? 1 : a.paid_on > b.paid_on ? -1 : 0));
+    }
+    return map;
+  }, [payments]);
 
   const rollup = useMemo(() => {
     const byPlayer = new Map<string, number>();
@@ -39,6 +54,11 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
       .map((p) => ({ id: p.id, name: p.name, totalCents: byPlayer.get(p.id) ?? 0, paid: byPlayer.has(p.id) }))
       .sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
   }, [players, payments]);
+
+  const unmatchedPayments = useMemo(
+    () => payments.filter((p) => !p.player_id).sort((a, b) => (a.paid_on < b.paid_on ? 1 : a.paid_on > b.paid_on ? -1 : 0)),
+    [payments],
+  );
 
   const addPayment = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -261,26 +281,103 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
                 <th className="px-4 py-3">Player</th>
                 <th className="px-4 py-3">Total paid</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {rollup.map((r) => (
-                <tr key={r.id} className="border-t border-black/5 text-neutral-700">
-                  <td className="px-4 py-3 font-medium text-neutral-900">{r.name}</td>
-                  <td className="px-4 py-3">{formatCents(r.totalCents)}</td>
-                  <td className="px-4 py-3">
-                    {r.paid ? (
-                      <span className="text-xs font-semibold text-emerald-700">Paid</span>
-                    ) : (
-                      <span className="text-xs font-semibold text-rose-600">Unpaid</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {rollup.map((r) => {
+                const history = paymentsByPlayer.get(r.id) ?? [];
+                const expanded = expandedPlayerId === r.id;
+                return (
+                  <Fragment key={r.id}>
+                    <tr className="border-t border-black/5 text-neutral-700">
+                      <td className="px-4 py-3 font-medium text-neutral-900">{r.name}</td>
+                      <td className="px-4 py-3">{formatCents(r.totalCents)}</td>
+                      <td className="px-4 py-3">
+                        {r.paid ? (
+                          <span className="text-xs font-semibold text-emerald-700">Paid</span>
+                        ) : (
+                          <span className="text-xs font-semibold text-rose-600">Unpaid</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {history.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPlayerId(expanded ? null : r.id)}
+                            className="text-xs font-medium text-neutral-500 hover:text-neutral-900"
+                          >
+                            {expanded ? "Hide" : `Details (${history.length})`}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="border-t border-black/5 bg-neutral-50/70">
+                        <td colSpan={4} className="px-4 py-3">
+                          <table className="w-full text-left text-xs">
+                            <thead className="text-neutral-500">
+                              <tr>
+                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Date</th>
+                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Amount</th>
+                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Method</th>
+                                <th className="py-1 font-medium uppercase tracking-wide">Note</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {history.map((p) => (
+                                <tr key={p.id} className="border-t border-black/5 text-neutral-700">
+                                  <td className="py-1.5 pr-4">{p.paid_on}</td>
+                                  <td className="py-1.5 pr-4 font-medium text-neutral-900">
+                                    {formatCents(p.amount_cents)}
+                                  </td>
+                                  <td className="py-1.5 pr-4 capitalize">{p.method}</td>
+                                  <td className="py-1.5 text-neutral-500">{p.note ?? "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
+
+      {unmatchedPayments.length > 0 ? (
+        <div>
+          <h2 className="text-xl font-semibold text-neutral-900">Unmatched payments</h2>
+          <p className="mt-1 text-sm text-neutral-500">Free-text payers not tied to a roster player.</p>
+          <div className="glass-card mt-4 overflow-x-auto rounded-3xl">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Payer</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Method</th>
+                  <th className="px-4 py-3">Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unmatchedPayments.map((p) => (
+                  <tr key={p.id} className="border-t border-black/5 text-neutral-700">
+                    <td className="px-4 py-3">{p.paid_on}</td>
+                    <td className="px-4 py-3 font-medium text-neutral-900">{p.payer_name ?? "Unknown"}</td>
+                    <td className="px-4 py-3 font-semibold text-neutral-900">{formatCents(p.amount_cents)}</td>
+                    <td className="px-4 py-3 capitalize">{p.method}</td>
+                    <td className="px-4 py-3 text-neutral-500">{p.note ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

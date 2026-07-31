@@ -26,7 +26,15 @@ type TeamColorPalette = {
   border: string;
 };
 
-export const standings: TeamStanding[] = [
+export type Season = {
+  id: string;
+  label: string;
+  status: "complete" | "active";
+  standings: TeamStanding[];
+  skaters: SkaterStat[];
+};
+
+const standings2025_26: TeamStanding[] = [
   {
     team: "Toe Dragons",
     gp: 24,
@@ -89,7 +97,7 @@ export const standings: TeamStanding[] = [
   },
 ];
 
-export const topSkaters: SkaterStat[] = [
+const skaters2025_26: SkaterStat[] = [
   { player: "Larry Rowe", team: "Toe Dragons", gamesPlayed: 23, goals: 33, assists: 31, points: 64 },
   { player: "Nic Laburn", team: "Wednesday Knights", gamesPlayed: 24, goals: 32, assists: 23, points: 55 },
   { player: "Brett Best", team: "Trashers", gamesPlayed: 25, goals: 35, assists: 15, points: 50 },
@@ -183,26 +191,30 @@ export const topSkaters: SkaterStat[] = [
   { player: "Wilson Phillips", team: "Trashers", gamesPlayed: 24, goals: 0, assists: 1, points: 1 },
 ];
 
-export const latestResult = {
-  date: "Wednesday, April 22",
-  title: "Week 34 Play-In (4th vs 5th)",
-  summary: "Trashers 9 - 3 Tank Fillers",
-};
-
-export const upcomingMatchups = [
+export const seasons: Season[] = [
   {
-    date: "29 April 2026",
-    home: "Toe Dragons",
-    away: "Trashers",
-    notes: "Playoff Semifinal · 10:00 PM",
+    id: "2026-27",
+    label: "2026–27",
+    status: "active",
+    standings: [],
+    skaters: [],
   },
   {
-    date: "29 April 2026",
-    home: "Ghost Pirates",
-    away: "Wednesday Knights",
-    notes: "Playoff Semifinal · 10:30 PM",
+    id: "2025-26",
+    label: "2025–26",
+    status: "complete",
+    standings: standings2025_26,
+    skaters: skaters2025_26,
   },
 ];
+
+export function getCurrentSeason(): Season {
+  return seasons[0];
+}
+
+export function getSeason(id: string): Season | undefined {
+  return seasons.find((season) => season.id === id);
+}
 
 const fallbackTeamColors: TeamColorPalette = {
   background: "#f3f4f6",

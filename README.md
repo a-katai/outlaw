@@ -5,8 +5,9 @@ video gallery, a live draft board with a captain pick flow, and an admin
 console for running the draft and tracking payments.
 
 Next.js 16 (App Router) + Tailwind 4, running on bun. Static league data
-(standings/skaters) lives in `lib/league-data.ts`; the draft and payments
-ledger are backed by Supabase (project ref `cqltfdekmfxlsgrvxtlr`).
+(standings/skaters, as a multi-season catalogue) lives in `lib/league-data.ts`;
+the draft and payments ledger are backed by Supabase (project ref
+`cqltfdekmfxlsgrvxtlr`).
 
 ## Commands
 
@@ -17,6 +18,17 @@ bun run build     # production build
 bun run start     # run the production build
 bun run lint      # eslint
 ```
+
+## Seasons
+
+`lib/league-data.ts` exports `seasons: Season[]`, ordered newest first, each
+with `id`, `label`, `status` (`"complete"` or `"active"`), `standings`, and
+`skaters`. `/stats` reads `?season=<id>` (default: `seasons[0]`, the current
+season) and shows a designed empty state for any season with no data yet. To
+archive the current season and start the next: fill in the outgoing season's
+final `standings`/`skaters`, flip its `status` to `"complete"`, then add a new
+entry at the top of the array with `status: "active"` and empty
+`standings`/`skaters`.
 
 ## Environment variables
 
