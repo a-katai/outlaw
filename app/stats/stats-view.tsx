@@ -5,11 +5,22 @@ import Link from "next/link";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { getTeamColors, seasons, type Season } from "@/lib/league-data";
+import { getTeamColors, type SkaterStat, type TeamStanding } from "@/lib/league-data";
+import type { LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
 
 type SortKey = "gamesPlayed" | "goals" | "assists" | "points" | "ppg";
 
-export function StatsView({ season }: { season: Season }) {
+export type StatsSeasonViewModel = {
+  id: string;
+  label: string;
+  standings: TeamStanding[];
+  skaters: SkaterStat[];
+  teams?: LiveTeam[];
+  rosters?: Record<string, LiveRosterPlayer[]>;
+  hasFinalGames?: boolean;
+};
+
+export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel; catalogue: SeasonSummary[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("points");
 
   const { leaguePlayers, subPlayers } = useMemo(() => {
@@ -121,6 +132,7 @@ export function StatsView({ season }: { season: Season }) {
       },
     });
 
+    if (subPlayers.length > 0) {
     autoTable(doc, {
       startY: (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
         ? ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
@@ -147,11 +159,13 @@ export function StatsView({ season }: { season: Season }) {
         data.cell.styles.lineWidth = 0.25;
       },
     });
+    }
 
     doc.save(`outlaw-player-stats-${season.id}.pdf`);
   };
 
-  const hasData = season.standings.length > 0 || season.skaters.length > 0;
+  const hasData = season.hasFinalGames ?? (season.standings.length > 0 || season.skaters.length > 0);
+  const rosterTeams = (season.teams ?? []).filter((t) => (season.rosters?.[t.name]?.length ?? 0) > 0);
 
   return (
     <section className="space-y-8">
@@ -160,7 +174,7 @@ export function StatsView({ season }: { season: Season }) {
         <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Stats · {season.label}</h1>
 
         <div className="mt-5 inline-flex items-center gap-1 rounded-full border border-black/10 bg-neutral-100/80 p-1">
-          {seasons.map((s) => (
+          {catalogue.map((s) => (
             <Link
               key={s.id}
               href={`/stats?season=${s.id}`}
@@ -187,17 +201,51 @@ export function StatsView({ season }: { season: Season }) {
       </div>
 
       {!hasData ? (
-        <div className="glass-card rounded-3xl px-8 py-20 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">{season.label} Season</p>
-          <h2 className="mt-3 text-3xl font-semibold text-neutral-900">No stats yet</h2>
-          <p className="mt-3 text-sm text-neutral-500">
-            The {season.label} season starts after the draft.{" "}
-            <Link href="/draft" className="text-neutral-700 underline underline-offset-4 transition hover:text-neutral-900">
-              See the draft board
-            </Link>
-            .
-          </p>
-        </div>
+        <>
+          <div className="glass-card rounded-3xl px-8 py-20 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">{season.label} Season</p>
+            <h2 className="mt-3 text-3xl font-semibold text-neutral-900">No stats yet</h2>
+            <p className="mt-3 text-sm text-neutral-500">
+              The {season.label} season starts after the draft.{" "}
+              <Link href="/draft" className="text-neutral-700 underline underline-offset-4 transition hover:text-neutral-900">
+                See the draft board
+              </Link>
+              .
+            </p>
+          </div>
+
+          {rosterTeams.length > 0 ? (
+            <div>
+              <h2 className="text-2xl font-semibold text-neutral-900">Rosters</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {rosterTeams.map((team) => (
+                  <div key={team.id} className="glass-card rounded-3xl p-5">
+                    <span
+                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                      style={{
+                        backgroundColor: getTeamColors(team.name).background,
+                        color: getTeamColors(team.name).text,
+                        borderColor: getTeamColors(team.name).border,
+                      }}
+                    >
+                      {team.name}
+                    </span>
+                    <ul className="mt-4 space-y-1.5 text-sm text-neutral-700">
+                      {(season.rosters?.[team.name] ?? []).map((player) => (
+                        <li key={player.id} className="flex items-center justify-between gap-2">
+                          <span className="truncate">{player.name}</span>
+                          {player.position ? (
+                            <span className="shrink-0 text-xs font-medium text-neutral-400">{player.position}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
           <div className="glass-card overflow-hidden rounded-3xl md:hidden">
@@ -392,6 +440,8 @@ export function StatsView({ season }: { season: Season }) {
             </table>
           </div>
 
+          {subPlayers.length > 0 ? (
+          <>
           <div>
             <h2 className="text-2xl font-semibold text-neutral-900">Subs</h2>
           </div>
@@ -491,6 +541,8 @@ export function StatsView({ season }: { season: Season }) {
               </tbody>
             </table>
           </div>
+          </>
+          ) : null}
           <p className="text-xs text-neutral-500">Tip: click GP, Goals, Assists, PTS, or PTS/GP to sort players.</p>
         </>
       )}

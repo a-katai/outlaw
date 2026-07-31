@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { AdminState, fetchAdminState } from "./admin-api";
 import { AdminDraftTab } from "./admin-draft-tab";
 import { AdminPaymentsTab } from "./admin-payments-tab";
+import { AdminSeasonTab } from "./admin-season-tab";
+import { fetchSeasonAdminState, type SeasonAdminState } from "./admin-season-api";
 
-type Tab = "draft" | "payments";
+type Tab = "draft" | "payments" | "season";
 
 export function AdminDashboard() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("draft");
   const [state, setState] = useState<AdminState | null>(null);
+  const [seasonState, setSeasonState] = useState<SeasonAdminState | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
@@ -20,12 +23,18 @@ export function AdminDashboard() {
     setLoading(false);
   }, []);
 
+  const refetchSeason = useCallback(async () => {
+    const data = await fetchSeasonAdminState();
+    setSeasonState(data);
+  }, []);
+
   useEffect(() => {
     let ignore = false;
     (async () => {
-      const data = await fetchAdminState();
+      const [data, seasonData] = await Promise.all([fetchAdminState(), fetchSeasonAdminState()]);
       if (ignore) return;
       setState(data);
+      setSeasonState(seasonData);
       setLoading(false);
     })();
     return () => {
@@ -58,6 +67,7 @@ export function AdminDashboard() {
         {(
           [
             { key: "draft", label: "Draft control" },
+            { key: "season", label: "Season" },
             { key: "payments", label: "Payments ledger" },
           ] as { key: Tab; label: string }[]
         ).map((t) => (
@@ -78,6 +88,12 @@ export function AdminDashboard() {
         <div className="glass-card rounded-3xl p-10 text-center text-sm text-neutral-500">Loading…</div>
       ) : tab === "draft" ? (
         <AdminDraftTab state={state} refetch={refetch} />
+      ) : tab === "season" ? (
+        !seasonState ? (
+          <div className="glass-card rounded-3xl p-10 text-center text-sm text-neutral-500">Loading…</div>
+        ) : (
+          <AdminSeasonTab state={seasonState} refetch={refetchSeason} />
+        )
       ) : (
         <AdminPaymentsTab state={state} refetch={refetch} />
       )}
