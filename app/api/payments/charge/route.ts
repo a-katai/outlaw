@@ -5,12 +5,31 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SEASON = "Summer 2026";
 const CLOVER_CHARGES_URL = "https://scl.clover.com/v1/charges";
 
+// Rate-limit thresholds for the public card endpoint (card-testing defense).
+// Per-IP windows stop a single attacker's script; the global circuit breaker
+// catches slow, distributed testing spread across many IPs.
+const IP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const IP_MAX_ATTEMPTS = 5;
+const IP_FAILED_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const IP_MAX_FAILED_ATTEMPTS = 8;
+const GLOBAL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const GLOBAL_MAX_ATTEMPTS = 40;
+
 type ChargeBody = {
   token?: unknown;
   name?: unknown;
   email?: unknown;
   amountCents?: unknown;
 };
+
+function callerIp(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return "unknown";
+}
 
 function detroitDateISO(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -64,6 +83,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid payment token." }, { status: 400 });
   }
 
+  const supabase = createAdminClient();
+  const ip = callerIp(req);
+
+  // Log this attempt before touching Clover, then rate-limit off the ledger
+  // (this request counts toward its own window, so N=6 in a 5-max window
+  // is what trips the block on the 6th call).
+  const { data: attemptRow, error: attemptInsertError } = await supabase
+    .from("charge_attempts")
+    .insert({ ip, succeeded: false })
+    .select("id")
+    .single();
+  if (attemptInsertError) {
+    console.error("Failed to log charge attempt:", attemptInsertError.message);
+  }
+  const attemptId = attemptRow?.id ?? null;
+
+  const ipWindowStart = new Date(Date.now() - IP_WINDOW_MS).toISOString();
+  const failedWindowStart = new Date(Date.now() - IP_FAILED_WINDOW_MS).toISOString();
+  const globalWindowStart = new Date(Date.now() - GLOBAL_WINDOW_MS).toISOString();
+
+  const [ipCountRes, failedCountRes, globalCountRes] = await Promise.all([
+    supabase.from("charge_attempts").select("id", { count: "exact", head: true }).eq("ip", ip).gte("created_at", ipWindowStart),
+    supabase
+      .from("charge_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("ip", ip)
+      .eq("succeeded", false)
+      .gte("created_at", failedWindowStart),
+    supabase.from("charge_attempts").select("id", { count: "exact", head: true }).gte("created_at", globalWindowStart),
+  ]);
+
+  const ipAttempts = ipCountRes.count ?? 0;
+  const ipFailedAttempts = failedCountRes.count ?? 0;
+  const globalAttempts = globalCountRes.count ?? 0;
+
+  if (ipAttempts > IP_MAX_ATTEMPTS || ipFailedAttempts > IP_MAX_FAILED_ATTEMPTS || globalAttempts > GLOBAL_MAX_ATTEMPTS) {
+    return NextResponse.json({ ok: false, error: "Too many attempts — try again later." }, { status: 429 });
+  }
+
   const privateToken = process.env.CLOVER_PRIVATE_TOKEN;
   if (!privateToken) {
     console.error("CLOVER_PRIVATE_TOKEN is not set");
@@ -110,9 +168,21 @@ export async function POST(req: NextRequest) {
   const chargeRecord = chargeData && typeof chargeData === "object" ? (chargeData as Record<string, unknown>) : {};
   const chargeId = typeof chargeRecord.id === "string" ? chargeRecord.id : null;
 
+  // A successful charge shouldn't count against the failed-attempts
+  // threshold — mark this attempt row so legit payers who eventually
+  // succeed aren't penalized by IP_MAX_FAILED_ATTEMPTS.
+  if (attemptId) {
+    const { error: markSucceededError } = await supabase
+      .from("charge_attempts")
+      .update({ succeeded: true })
+      .eq("id", attemptId);
+    if (markSucceededError) {
+      console.error("Failed to mark charge attempt succeeded:", markSucceededError.message);
+    }
+  }
+
   let ledgerLogged = true;
   try {
-    const supabase = createAdminClient();
     const { data: matchedPlayer } = await supabase
       .from("players")
       .select("id")

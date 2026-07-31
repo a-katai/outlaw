@@ -62,18 +62,42 @@ export type SeasonSummary = {
 };
 
 /**
- * Fetches the active season (status = 'active') with computed standings and
- * skater stats, plus its teams/rosters for the pre-season roster-card view.
+ * Fetches a DB season with computed standings, skater stats, games, and
+ * rosters — the same computation regardless of the season's status, so a
+ * completed season's history stays fully browsable, not just the active one.
+ *
+ * - No id: prefer the active season; if none is active, fall back to the
+ *   newest DB season by created_at.
+ * - With id: fetch THAT season row whatever its status (active/complete/
+ *   upcoming) — returns null if it doesn't exist as a DB season.
+ *
  * Anon client is fine — every table involved is public-read.
  */
-export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> => {
+export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | null> => {
   const supabase = createBrowserClient();
 
-  const { data: seasonRow } = await supabase
-    .from("seasons")
-    .select("id,label,status")
-    .eq("status", "active")
-    .maybeSingle();
+  let seasonRow: SeasonRow | null = null;
+  if (id) {
+    const { data } = await supabase.from("seasons").select("id,label,status").eq("id", id).maybeSingle();
+    seasonRow = data ?? null;
+  } else {
+    const { data: activeRow } = await supabase
+      .from("seasons")
+      .select("id,label,status")
+      .eq("status", "active")
+      .maybeSingle();
+    if (activeRow) {
+      seasonRow = activeRow;
+    } else {
+      const { data: newestRow } = await supabase
+        .from("seasons")
+        .select("id,label,status")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      seasonRow = newestRow ?? null;
+    }
+  }
 
   if (!seasonRow) return null;
 
@@ -263,22 +287,57 @@ export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> =>
 });
 
 /**
- * Merged season list for the stats-page switcher: the live active season
- * first, then static archived seasons. The static "2026-27" placeholder is
- * always skipped — the live season (whatever its id) replaces it.
+ * Thin wrapper over getSeasonLive: the active season only, or null if none is
+ * active. Existing consumers (schedule, scorekeeper) rely on this "active
+ * only, no fallback" semantics — don't change it here.
+ */
+export const getActiveSeasonLive = cache(async (): Promise<LiveSeason | null> => {
+  const supabase = createBrowserClient();
+
+  const { data: seasonRow } = await supabase
+    .from("seasons")
+    .select("id")
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!seasonRow) return null;
+
+  return getSeasonLive(seasonRow.id);
+});
+
+/**
+ * Merged season list for the stats-page switcher: every DB season (any
+ * status, newest first by created_at — active pinned to the front if one
+ * exists), followed by the static archived entries. The static "2026-27"
+ * placeholder is always skipped, and any static id that collides with a DB
+ * season id is skipped too — the DB season wins.
  */
 export const getSeasonCatalogue = cache(async (): Promise<SeasonSummary[]> => {
-  const live = await getActiveSeasonLive();
+  const supabase = createBrowserClient();
+
+  const { data } = await supabase
+    .from("seasons")
+    .select("id,label,status,created_at")
+    .order("created_at", { ascending: false });
+  const dbSeasons = data ?? [];
+
+  const active = dbSeasons.filter((s) => s.status === "active");
+  const rest = dbSeasons.filter((s) => s.status !== "active");
+  const orderedDb = [...active, ...rest]; // active pinned first; rest already newest-first from the query
+  const dbIds = new Set(orderedDb.map((s) => s.id));
+
+  const dbEntries: SeasonSummary[] = orderedDb.map((s) => ({
+    id: s.id,
+    label: s.label,
+    status: s.status as SeasonStatus,
+    live: true,
+  }));
 
   const staticEntries: SeasonSummary[] = staticSeasons
-    .filter((s) => s.id !== "2026-27")
+    .filter((s) => s.id !== "2026-27" && !dbIds.has(s.id))
     .map((s) => ({ id: s.id, label: s.label, status: s.status, live: false }));
 
-  const liveEntry: SeasonSummary[] = live
-    ? [{ id: live.id, label: live.label, status: live.status, live: true }]
-    : [];
-
-  return [...liveEntry, ...staticEntries];
+  return [...dbEntries, ...staticEntries];
 });
 
 // --- Game page ---
