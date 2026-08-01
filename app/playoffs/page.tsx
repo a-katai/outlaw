@@ -79,7 +79,11 @@ export default async function PlayoffsPage() {
 
         <div className="glass-card rounded-3xl p-8 text-center md:p-12">
           <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Coming soon</p>
-          <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Playoffs begin after the regular season.</h2>
+          <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Four make it. One takes it.</h2>
+          <p className="mx-auto mt-3 max-w-md text-neutral-600">
+            After 25 games, 4th and 5th meet in a single play-in game for the last spot. Semifinals are
+            one game each. The championship is a best of three.
+          </p>
           <Link
             href="/stats"
             className="mt-6 inline-flex items-center justify-center rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-black"
