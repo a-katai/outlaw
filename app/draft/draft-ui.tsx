@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Draft, DraftPick, Player, Team } from "@/lib/draft-types";
 
 export function FormatBadge({ format }: { format: Draft["format"] }) {
@@ -69,7 +70,12 @@ export function TeamRosterCard({
           {teamPicks.map((pick) => (
             <li key={pick.id} className="flex items-baseline gap-2 text-sm text-neutral-700">
               <span className="w-6 shrink-0 text-xs font-medium text-neutral-400">R{pick.round}</span>
-              <span className="truncate">{playerNameById.get(pick.player_id) ?? "Unknown player"}</span>
+              <Link
+                href={`/players/${pick.player_id}`}
+                className="truncate transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+              >
+                {playerNameById.get(pick.player_id) ?? "Unknown player"}
+              </Link>
             </li>
           ))}
         </ol>

@@ -62,6 +62,66 @@ export type SeasonSummary = {
   live: boolean;
 };
 
+// --- Shared skater aggregation ---
+
+export type GameStatDbRow = { game_id: string; player_id: string; team_id: string; goals: number; assists: number };
+export type GameRosterDbRow = { game_id: string; player_id: string; team_id: string };
+export type SkaterAggregate = { gamesPlayed: number; goals: number; assists: number; teamId: string };
+
+/**
+ * GP = union of game_stats appearances and game_rosters check-ins across the
+ * given eligible game ids — a dressed player gets GP credit even if they
+ * never touched the scoresheet. G/A are summed purely from game_stats.
+ * "Team" = most recent (by game date) appearance across either source.
+ *
+ * Shared by league-wide skater stats (getSeasonLive, below) and a single
+ * player's career line (lib/players.ts) — both call this one implementation
+ * so the GP rule never drifts between the two.
+ */
+export function aggregateSkaterStats(
+  eligibleGameIds: Set<string>,
+  gameDateById: Map<string, string>,
+  gameStats: GameStatDbRow[],
+  gameRosters: GameRosterDbRow[],
+): Map<string, SkaterAggregate> {
+  const stats = gameStats.filter((s) => eligibleGameIds.has(s.game_id));
+  const rosters = gameRosters.filter((r) => eligibleGameIds.has(r.game_id));
+
+  type Appearance = { playerId: string; gameId: string; teamId: string };
+  const appearances: Appearance[] = [
+    ...stats.map((s) => ({ playerId: s.player_id, gameId: s.game_id, teamId: s.team_id })),
+    ...rosters.map((r) => ({ playerId: r.player_id, gameId: r.game_id, teamId: r.team_id })),
+  ];
+  const appearancesByDateAsc = [...appearances].sort((a, b) => {
+    const da = gameDateById.get(a.gameId) ?? "";
+    const db = gameDateById.get(b.gameId) ?? "";
+    return da < db ? -1 : da > db ? 1 : 0;
+  });
+
+  type Agg = { gpGames: Set<string>; goals: number; assists: number; teamId: string };
+  const aggByPlayer = new Map<string, Agg>();
+  for (const a of appearancesByDateAsc) {
+    const existing = aggByPlayer.get(a.playerId) ?? { gpGames: new Set<string>(), goals: 0, assists: 0, teamId: a.teamId };
+    existing.gpGames.add(a.gameId); // Set — union, no double-count when both sources hit the same game.
+    existing.teamId = a.teamId; // last write (ascending by date) = most recent
+    aggByPlayer.set(a.playerId, existing);
+  }
+  // Goals/assists are additive from game_stats only — every player here is
+  // already present in aggByPlayer via the appearances merge above.
+  for (const s of stats) {
+    const existing = aggByPlayer.get(s.player_id);
+    if (!existing) continue;
+    existing.goals += s.goals;
+    existing.assists += s.assists;
+  }
+
+  const result = new Map<string, SkaterAggregate>();
+  for (const [playerId, agg] of aggByPlayer) {
+    result.set(playerId, { gamesPlayed: agg.gpGames.size, goals: agg.goals, assists: agg.assists, teamId: agg.teamId });
+  }
+  return result;
+}
+
 /**
  * Fetches a DB season with computed standings, skater stats, games, and
  * rosters — the same computation regardless of the season's status, so a
@@ -201,53 +261,20 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     })
     .sort((a, b) => b.points - a.points || b.diff - a.diff || b.goalsFor - a.goalsFor);
 
-  // --- Skater stats: GP = union of game_stats appearances and game_rosters
-  // check-ins for FINAL regular-season games — a dressed player gets GP
-  // credit even if they never touched the scoresheet. G/A are still summed
-  // purely from game_stats. "Team" = most recent (by game date) appearance
-  // across either source. ---
-  const gameDateById = new Map(games.map((g) => [g.id, g.date]));
   // Only finished, regular-season games count toward GP and scoring totals —
   // playoff and live-in-progress stat lines show up on the game page, not league stats.
+  const gameDateById = new Map(games.map((g) => [g.id, g.date]));
   const finalGameIds = new Set(
     games.filter((g) => g.status === "final" && g.gameType === "regular").map((g) => g.id),
   );
-  const finalStats = gameStats.filter((s) => finalGameIds.has(s.game_id));
-  const finalRosters = gameRosters.filter((r) => finalGameIds.has(r.game_id));
+  const skaterAgg = aggregateSkaterStats(finalGameIds, gameDateById, gameStats, gameRosters);
 
-  type Appearance = { playerId: string; gameId: string; teamId: string };
-  const appearances: Appearance[] = [
-    ...finalStats.map((s) => ({ playerId: s.player_id, gameId: s.game_id, teamId: s.team_id })),
-    ...finalRosters.map((r) => ({ playerId: r.player_id, gameId: r.game_id, teamId: r.team_id })),
-  ];
-  const appearancesByDateAsc = [...appearances].sort((a, b) => {
-    const da = gameDateById.get(a.gameId) ?? "";
-    const db = gameDateById.get(b.gameId) ?? "";
-    return da < db ? -1 : da > db ? 1 : 0;
-  });
-
-  type SkaterAgg = { gpGames: Set<string>; goals: number; assists: number; teamId: string };
-  const aggByPlayer = new Map<string, SkaterAgg>();
-  for (const a of appearancesByDateAsc) {
-    const existing = aggByPlayer.get(a.playerId) ?? { gpGames: new Set<string>(), goals: 0, assists: 0, teamId: a.teamId };
-    existing.gpGames.add(a.gameId); // Set — union, no double-count when both sources hit the same game.
-    existing.teamId = a.teamId; // last write (ascending by date) = most recent
-    aggByPlayer.set(a.playerId, existing);
-  }
-  // Goals/assists are additive from game_stats only — every player here is
-  // already present in aggByPlayer via the appearances merge above.
-  for (const s of finalStats) {
-    const existing = aggByPlayer.get(s.player_id);
-    if (!existing) continue;
-    existing.goals += s.goals;
-    existing.assists += s.assists;
-  }
-
-  const skaters: SkaterStat[] = Array.from(aggByPlayer.entries())
+  const skaters: SkaterStat[] = Array.from(skaterAgg.entries())
     .map(([playerId, agg]) => ({
+      playerId,
       player: playerNameById.get(playerId) ?? "Unknown",
       team: teamNameById.get(agg.teamId) ?? "Unknown",
-      gamesPlayed: agg.gpGames.size,
+      gamesPlayed: agg.gamesPlayed,
       goals: agg.goals,
       assists: agg.assists,
       points: agg.goals + agg.assists,

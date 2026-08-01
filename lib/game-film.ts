@@ -46,3 +46,20 @@ export function matchGameFilm(
     return teamNeedles.some((needle) => title.includes(needle));
   });
 }
+
+/**
+ * Matches league YouTube videos whose title mentions a player by full name
+ * (case-insensitive substring). Pass both the site name and, if the player
+ * has an archive alias, that alias — some older clips use the archive
+ * spelling. Pure function — no I/O.
+ */
+export function matchPlayerFilm(videos: VideoItem[], names: (string | null | undefined)[]): VideoItem[] {
+  const needles = Array.from(
+    new Set(names.filter((n): n is string => Boolean(n && n.trim())).map((n) => n.trim().toLowerCase())),
+  );
+  if (needles.length === 0) return [];
+  return videos.filter((video) => {
+    const title = video.title.toLowerCase();
+    return needles.some((needle) => title.includes(needle));
+  });
+}

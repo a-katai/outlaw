@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import { buildDraftGrid, draftOrderOnClock, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
@@ -127,7 +128,12 @@ export function DraftBoardClient() {
                 return (
                   <div key={pick.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-900">{playerNameById.get(pick.player_id) ?? "—"}</p>
+                      <Link
+                        href={`/players/${pick.player_id}`}
+                        className="block truncate font-medium text-neutral-900 transition hover:underline hover:underline-offset-4"
+                      >
+                        {playerNameById.get(pick.player_id) ?? "—"}
+                      </Link>
                       <p className="text-xs text-neutral-500">{team?.name ?? "—"}</p>
                     </div>
                     <p className="shrink-0 text-xs text-neutral-400">R{pick.round} · #{pick.pick_number}</p>
@@ -164,7 +170,18 @@ export function DraftBoardClient() {
                       key={team.id}
                       className={`px-4 py-3 ${isOnClock ? "bg-blue-50 font-semibold text-blue-900" : ""}`}
                     >
-                      {pick ? playerNameById.get(pick.player_id) ?? "—" : isOnClock ? "On the clock" : "—"}
+                      {pick ? (
+                        <Link
+                          href={`/players/${pick.player_id}`}
+                          className="transition hover:underline hover:underline-offset-4"
+                        >
+                          {playerNameById.get(pick.player_id) ?? "—"}
+                        </Link>
+                      ) : isOnClock ? (
+                        "On the clock"
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   );
                 })}
@@ -184,7 +201,12 @@ export function DraftBoardClient() {
               <ul className="space-y-1.5">
                 {availablePlayers.map((player) => (
                   <li key={player.id} className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-sm text-neutral-700">
-                    <span className="truncate">{player.name}</span>
+                    <Link
+                      href={`/players/${player.id}`}
+                      className="truncate transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+                    >
+                      {player.name}
+                    </Link>
                     <span className="flex shrink-0 items-center gap-1.5">
                       <RankBadge rank={player.rank} />
                       <PositionBadge position={player.position} />

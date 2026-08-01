@@ -19,6 +19,17 @@ export type StatsSeasonViewModel = {
   hasFinalGames?: boolean;
 };
 
+// Links a skater's name to their profile when a player id is available —
+// only true for live/DB-season rows; static archive rows have no id.
+function PlayerNameLink({ player }: { player: { player: string; playerId?: string } }) {
+  if (!player.playerId) return <>{player.player}</>;
+  return (
+    <Link href={`/players/${player.playerId}`} className="transition hover:underline hover:underline-offset-4">
+      {player.player}
+    </Link>
+  );
+}
+
 export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel; catalogue: SeasonSummary[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("points");
 
@@ -234,7 +245,12 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                     <ul className="mt-4 space-y-1.5 text-sm text-neutral-700">
                       {(season.rosters?.[team.name] ?? []).map((player) => (
                         <li key={player.id} className="flex items-center justify-between gap-2">
-                          <span className="truncate">{player.name}</span>
+                          <Link
+                            href={`/players/${player.id}`}
+                            className="truncate transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+                          >
+                            {player.name}
+                          </Link>
                           {player.position ? (
                             <span className="shrink-0 text-xs font-medium text-neutral-400">{player.position}</span>
                           ) : null}
@@ -347,9 +363,9 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
             </div>
             <div className="divide-y divide-black/5">
               {leaguePlayers.map((player) => (
-                <div key={player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-neutral-900">{player.player}</p>
+                    <p className="truncate text-xs font-semibold text-neutral-900"><PlayerNameLink player={player} /></p>
                     <span
                       className="mt-1 inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
                       style={{
@@ -416,8 +432,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
               </thead>
               <tbody>
                 {leaguePlayers.map((player) => (
-                  <tr key={player.player} className="border-t border-black/5 text-neutral-700">
-                    <td className="px-4 py-3 font-semibold text-neutral-900">{player.player}</td>
+                  <tr key={player.playerId ?? player.player} className="border-t border-black/5 text-neutral-700">
+                    <td className="px-4 py-3 font-semibold text-neutral-900"><PlayerNameLink player={player} /></td>
                     <td className="px-4 py-3">
                       <span
                         className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
@@ -457,9 +473,9 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
             </div>
             <div className="divide-y divide-black/5">
               {subPlayers.map((player) => (
-                <div key={player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-neutral-900">{player.player}</p>
+                    <p className="truncate text-xs font-semibold text-neutral-900"><PlayerNameLink player={player} /></p>
                     <span
                       className="mt-1 inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
                       style={{
@@ -518,8 +534,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
               </thead>
               <tbody>
                 {subPlayers.map((player) => (
-                  <tr key={player.player} className="border-t border-black/5 text-neutral-700">
-                    <td className="px-4 py-3 font-semibold text-neutral-900">{player.player}</td>
+                  <tr key={player.playerId ?? player.player} className="border-t border-black/5 text-neutral-700">
+                    <td className="px-4 py-3 font-semibold text-neutral-900"><PlayerNameLink player={player} /></td>
                     <td className="px-4 py-3">
                       <span
                         className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { draftOrderOnClock, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
@@ -264,7 +265,12 @@ export function PickClient() {
                 {availablePlayers.map((player) => (
                   <li key={player.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm text-neutral-800">{player.name}</span>
+                      <Link
+                        href={`/players/${player.id}`}
+                        className="truncate text-sm text-neutral-800 transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+                      >
+                        {player.name}
+                      </Link>
                       <RankBadge rank={player.rank} />
                       <PositionBadge position={player.position} />
                     </div>
@@ -319,7 +325,12 @@ export function PickClient() {
                     <span className="w-14 shrink-0 text-xs font-medium text-neutral-400">
                       R{pick.round} · #{pick.pick_number}
                     </span>
-                    <span className="truncate">{playerNameById.get(pick.player_id) ?? "—"}</span>
+                    <Link
+                      href={`/players/${pick.player_id}`}
+                      className="truncate transition hover:underline hover:underline-offset-4"
+                    >
+                      {playerNameById.get(pick.player_id) ?? "—"}
+                    </Link>
                   </li>
                 ))}
               </ol>

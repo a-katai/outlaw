@@ -18,6 +18,9 @@ export type SkaterStat = {
   goals: number;
   assists: number;
   points: number;
+  // Present only for live/DB-season rows (getSeasonLive) — archive rows have
+  // no player id to link to, so this stays undefined for static seasons.
+  playerId?: string;
 };
 
 type TeamColorPalette = {
@@ -214,6 +217,34 @@ export function getCurrentSeason(): Season {
 
 export function getSeason(id: string): Season | undefined {
   return seasons.find((season) => season.id === id);
+}
+
+// Site player name -> 2025–26 archive name, for the handful of players whose
+// name is spelled differently in the archive than in the current players
+// table. Best-guess matches from name similarity — flagged here as needing
+// Anthony's confirmation, not verified identity claims.
+// "Tony Katai" was checked against the archive and is spelled identically
+// there ("Tony Katai"), so it needs no alias.
+// "Brice Leuenberger" is deliberately NOT aliased to "Eric Leuenberger" —
+// possibly a different person; do not merge without confirming.
+const archiveNameAliases: Record<string, string> = {
+  "Taharka Iyi": "Taharka Yi",
+  "Eric Strebel": "E Strebe",
+  "Chris Puzuolli": "Chris Puzzoli",
+  "Jakob Edringer": "Jakob Edinger",
+};
+
+/**
+ * Looks up a player's 2025–26 archive line by name (case-insensitive exact
+ * match on the full name), applying the alias map above first. Returns null
+ * when there's no match — callers should fall back to "first season on
+ * record" copy rather than guessing further.
+ */
+export function getArchiveSkaterLine(siteName: string): SkaterStat | null {
+  const archive = seasons.find((s) => s.id === "2025-26");
+  if (!archive) return null;
+  const target = (archiveNameAliases[siteName] ?? siteName).trim().toLowerCase();
+  return archive.skaters.find((s) => s.player.trim().toLowerCase() === target) ?? null;
 }
 
 const fallbackTeamColors: TeamColorPalette = {

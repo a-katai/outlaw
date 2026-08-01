@@ -46,7 +46,14 @@ function LineupCard({ teamName, players }: { teamName: string; players: LineupPl
       ) : (
         <ul className="mt-3 space-y-1 text-sm text-neutral-700">
           {players.map((p) => (
-            <li key={p.playerId}>{p.playerName}</li>
+            <li key={p.playerId}>
+              <Link
+                href={`/players/${p.playerId}`}
+                className="transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+              >
+                {p.playerName}
+              </Link>
+            </li>
           ))}
         </ul>
       )}
@@ -70,7 +77,12 @@ function BoxScoreCard({ teamName, scorers }: { teamName: string; scorers: GameSt
         ) : (
           scorers.map((s) => (
             <p key={s.playerId} className="text-neutral-700">
-              <span className="font-medium text-neutral-900">{s.playerName}</span>{" "}
+              <Link
+                href={`/players/${s.playerId}`}
+                className="font-medium text-neutral-900 transition hover:underline hover:underline-offset-4"
+              >
+                {s.playerName}
+              </Link>{" "}
               <span className="text-neutral-500">
                 ({s.goals}G, {s.assists}A)
               </span>
