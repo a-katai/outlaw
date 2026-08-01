@@ -5,6 +5,16 @@ import type { DraftFormat } from "./draft-types";
 
 export type RoundSlot = { round: number; slot: number };
 
+/** Rank asc (nulls last), then name asc — the standard ordering for any player pool/available list. */
+export function sortByRankThenName<T extends { rank: number | null; name: string }>(players: T[]): T[] {
+  return [...players].sort((a, b) => {
+    if (a.rank === null && b.rank === null) return a.name.localeCompare(b.name);
+    if (a.rank === null) return 1;
+    if (b.rank === null) return -1;
+    return a.rank - b.rank || a.name.localeCompare(b.name);
+  });
+}
+
 /** 1-indexed pick number -> { round, slot } within that round, both 1-indexed. */
 export function roundAndSlot(pickNumber: number, teamCount: number): RoundSlot {
   if (teamCount <= 0) throw new Error("teamCount must be positive");

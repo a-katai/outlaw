@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { draftOrderOnClock, roundAndSlot } from "@/lib/draft-logic";
+import { draftOrderOnClock, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { DraftFormat, PlayerPosition } from "@/lib/draft-types";
 import { AdminState, postJSON } from "./admin-api";
 
@@ -15,7 +15,7 @@ export function AdminDraftTab({ state, refetch }: { state: AdminState; refetch: 
   const teamCount = teams.filter((t) => t.draft_order !== null).length;
   const draftedPlayerIds = useMemo(() => new Set(picks.map((p) => p.player_id)), [picks]);
   const availablePlayers = useMemo(
-    () => players.filter((p) => !draftedPlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)),
+    () => sortByRankThenName(players.filter((p) => !draftedPlayerIds.has(p.id))),
     [players, draftedPlayerIds],
   );
 
@@ -482,12 +482,15 @@ function PlayerPool({
 }) {
   const [name, setName] = useState("");
   const [position, setPosition] = useState<PlayerPosition | "">("");
+  const [rank, setRank] = useState("");
   const [bulkText, setBulkText] = useState("");
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const sortedPlayers = useMemo(() => sortByRankThenName(players), [players]);
 
   const addPlayer = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -497,11 +500,13 @@ function PlayerPool({
       action: "add",
       name,
       position: position || null,
+      rank: rank.trim() ? Number(rank) : null,
     });
     setBusy(false);
     if (!data.ok) return setError(data.error ?? "Couldn't add player");
     setName("");
     setPosition("");
+    setRank("");
     await refetch();
   };
 
@@ -549,8 +554,17 @@ function PlayerPool({
               <option value="">Pos</option>
               <option value="F">F</option>
               <option value="D">D</option>
+              <option value="F/D">F/D</option>
               <option value="G">G</option>
             </select>
+            <input
+              type="number"
+              min={1}
+              className="w-20 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+              value={rank}
+              onChange={(e) => setRank(e.target.value)}
+              placeholder="Rank"
+            />
           </div>
           <button
             type="submit"
@@ -563,7 +577,9 @@ function PlayerPool({
 
         <div className="glass-card space-y-3 rounded-3xl p-5">
           <h3 className="text-sm font-semibold text-neutral-900">Bulk import</h3>
-          <p className="text-xs text-neutral-500">One per line, optional trailing F/D/G — e.g. &ldquo;Mike Smith F&rdquo;.</p>
+          <p className="text-xs text-neutral-500">
+            One per line, optional trailing position (F, D, G, or F/D) and rank — e.g. &ldquo;Mike Smith F 3&rdquo;.
+          </p>
           <textarea
             className="h-28 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
             value={bulkText}
@@ -588,6 +604,7 @@ function PlayerPool({
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-neutral-50/95 text-xs uppercase tracking-wide text-neutral-500">
             <tr>
+              <th className="px-4 py-3">Rank</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Pos</th>
               <th className="px-4 py-3">Status</th>
@@ -595,8 +612,9 @@ function PlayerPool({
             </tr>
           </thead>
           <tbody>
-            {players.map((player) => (
+            {sortedPlayers.map((player) => (
               <tr key={player.id} className="border-t border-black/5 text-neutral-700">
+                <td className="px-4 py-3 text-neutral-500">{player.rank ?? "—"}</td>
                 <td className="px-4 py-3 font-medium text-neutral-900">{player.name}</td>
                 <td className="px-4 py-3">{player.position ?? "—"}</td>
                 <td className="px-4 py-3">

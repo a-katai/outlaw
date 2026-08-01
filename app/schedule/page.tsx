@@ -105,14 +105,15 @@ export default async function SchedulePage() {
         <div>
           <p className="text-xs font-semibold tracking-[0.2em] text-neutral-500 uppercase">League Hub</p>
           <h1 className="mt-2 text-4xl font-semibold text-neutral-900">Schedule</h1>
-          <p className="mt-3 text-neutral-600">The 2026–27 schedule lands after the draft.</p>
+          <p className="mt-3 text-neutral-600">Wednesdays at DSC · first game September 9.</p>
         </div>
 
         <div className="glass-card rounded-3xl p-8 text-center md:p-12">
           <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Coming soon</p>
           <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Teams first, then games.</h2>
           <p className="mx-auto mt-3 max-w-md text-neutral-600">
-            Once the draft sets the rosters, the schedule posts here.
+            First game September 9. Wednesdays at DSC — 10:00 PM Rink B, 10:30 PM Rink A. The full schedule posts
+            after the draft.
           </p>
           <Link
             href="/draft"

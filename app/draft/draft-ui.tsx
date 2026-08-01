@@ -37,6 +37,15 @@ export function PositionBadge({ position }: { position: Player["position"] }) {
   );
 }
 
+export function RankBadge({ rank }: { rank: Player["rank"] }) {
+  if (!rank) return null;
+  return (
+    <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+      R{rank}
+    </span>
+  );
+}
+
 export function TeamRosterCard({
   team,
   picks,

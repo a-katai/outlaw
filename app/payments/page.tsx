@@ -31,6 +31,9 @@ export default async function PaymentsPage() {
         <p className="text-xs font-semibold tracking-[0.2em] text-neutral-500 uppercase">League Hub</p>
         <h1 className="mt-2 text-4xl font-semibold text-neutral-900">League Dues</h1>
         <p className="mt-3 text-neutral-600">Pay your dues by card. Payments are recorded automatically.</p>
+        <p className="mt-1 text-sm text-neutral-500">
+          Fall season: $150 deposit due August 10. Skaters $650, goalies $100.
+        </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1.35fr_1fr]">

@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
       .select("id,team_id,scorer_id,assist_id,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
-    supabase.from("players").select("id,name").order("name", { ascending: true }),
+    supabase.from("players").select("id,name,position,rank").order("name", { ascending: true }),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
@@ -42,7 +42,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
   const dressedRows = rostersRes.data ?? [];
   const goals = goalsRes.data ?? [];
   const allPlayers = allPlayersRes.data ?? [];
-  const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+  const playerById = new Map(allPlayers.map((p) => [p.id, p]));
 
   const rosterFor = (teamId: string) => {
     const draftIds = picks.filter((p) => p.team_id === teamId).map((p) => p.player_id);
@@ -50,7 +50,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
     const dressedSet = new Set(dressedIds);
     const allIds = Array.from(new Set([...draftIds, ...dressedIds]));
     return allIds
-      .map((id) => ({ id, name: playerNameById.get(id) ?? "Unknown", dressed: dressedSet.has(id) }))
+      .map((id) => ({
+        id,
+        name: playerById.get(id)?.name ?? "Unknown",
+        position: playerById.get(id)?.position ?? null,
+        rank: playerById.get(id)?.rank ?? null,
+        dressed: dressedSet.has(id),
+      }))
       .sort((a, b) => {
         if (a.dressed !== b.dressed) return a.dressed ? -1 : 1; // dressed first
         return a.name.localeCompare(b.name);
@@ -66,9 +72,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
     id: g.id,
     teamId: g.team_id,
     scorerId: g.scorer_id,
-    scorerName: g.scorer_id ? (playerNameById.get(g.scorer_id) ?? "Unknown") : null,
+    scorerName: g.scorer_id ? (playerById.get(g.scorer_id)?.name ?? "Unknown") : null,
     assistId: g.assist_id,
-    assistName: g.assist_id ? (playerNameById.get(g.assist_id) ?? "Unknown") : null,
+    assistName: g.assist_id ? (playerById.get(g.assist_id)?.name ?? "Unknown") : null,
     createdAt: g.created_at,
   }));
 

@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { draftOrderOnClock } from "@/lib/draft-logic";
+import { draftOrderOnClock, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
-import { FormatBadge, PositionBadge, StatusBadge } from "../draft-ui";
+import { FormatBadge, PositionBadge, RankBadge, StatusBadge } from "../draft-ui";
 import { useLiveDraft } from "../use-live-draft";
 
 const STORAGE_KEY = "outlaw_draft_code";
@@ -113,10 +113,11 @@ export function PickClient() {
   const draftedPlayerIds = useMemo(() => new Set(picks.map((p) => p.player_id)), [picks]);
   const availablePlayers = useMemo(
     () =>
-      players
-        .filter((p) => !draftedPlayerIds.has(p.id))
-        .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      sortByRankThenName(
+        players
+          .filter((p) => !draftedPlayerIds.has(p.id))
+          .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase())),
+      ),
     [players, draftedPlayerIds, search],
   );
 
@@ -264,6 +265,7 @@ export function PickClient() {
                   <li key={player.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-sm text-neutral-800">{player.name}</span>
+                      <RankBadge rank={player.rank} />
                       <PositionBadge position={player.position} />
                     </div>
                     {selectedPlayerId === player.id ? (

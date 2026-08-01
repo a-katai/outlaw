@@ -44,7 +44,11 @@ const FIELD_DEFS = [
 
 type FieldKey = (typeof FIELD_DEFS)[number]["key"];
 
-const AMOUNT_CHIPS = [50, 100, 150];
+const AMOUNT_CHIPS = [
+  { amount: 150, label: "Deposit · $150" },
+  { amount: 650, label: "Skater · $650" },
+  { amount: 100, label: "Goalie · $100" },
+];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const cloverStyles = {
@@ -309,15 +313,15 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
                   placeholder="150.00"
                   required
                 />
-                <div className="mt-1 flex gap-2">
+                <div className="mt-1 flex flex-wrap gap-2">
                   {AMOUNT_CHIPS.map((chip) => (
                     <button
-                      key={chip}
+                      key={chip.amount}
                       type="button"
-                      onClick={() => setAmount(chip.toFixed(2))}
+                      onClick={() => setAmount(chip.amount.toFixed(2))}
                       className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-neutral-600 transition hover:border-blue-500/40 hover:text-neutral-900"
                     >
-                      ${chip}
+                      {chip.label}
                     </button>
                   ))}
                 </div>

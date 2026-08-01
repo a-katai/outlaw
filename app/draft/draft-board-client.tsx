@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { buildDraftGrid, draftOrderOnClock, roundAndSlot } from "@/lib/draft-logic";
+import { buildDraftGrid, draftOrderOnClock, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
-import { FormatBadge, PositionBadge, StatusBadge, TeamRosterCard } from "./draft-ui";
+import { FormatBadge, PositionBadge, RankBadge, StatusBadge, TeamRosterCard } from "./draft-ui";
 import { useLiveDraft } from "./use-live-draft";
 
 export function DraftBoardClient() {
@@ -22,7 +22,7 @@ export function DraftBoardClient() {
   const draftedPlayerIds = useMemo(() => new Set(picks.map((p) => p.player_id)), [picks]);
 
   const availablePlayers = useMemo(
-    () => players.filter((p) => !draftedPlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)),
+    () => sortByRankThenName(players.filter((p) => !draftedPlayerIds.has(p.id))),
     [players, draftedPlayerIds],
   );
 
@@ -52,9 +52,10 @@ export function DraftBoardClient() {
   if (!draft || draft.status === "setup") {
     return (
       <div className="glass-card rounded-3xl px-8 py-20 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Live Draft</p>
-        <h1 className="mt-3 text-3xl font-semibold text-neutral-900">Draft coming soon</h1>
-        <p className="mt-3 text-sm text-neutral-500">Check back once the commissioner starts the draft.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Draft night</p>
+        <h1 className="mt-3 text-3xl font-semibold text-neutral-900">Wednesday, August 26 · 8 PM</h1>
+        <p className="mt-3 text-sm text-neutral-500">Mr. Joe&apos;s, Southfield — free beer and pizza.</p>
+        <p className="mt-2 text-xs text-neutral-400">5 teams · 12 rounds · rosters of 11 skaters plus a goalie</p>
       </div>
     );
   }
@@ -184,7 +185,10 @@ export function DraftBoardClient() {
                 {availablePlayers.map((player) => (
                   <li key={player.id} className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-sm text-neutral-700">
                     <span className="truncate">{player.name}</span>
-                    <PositionBadge position={player.position} />
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <RankBadge rank={player.rank} />
+                      <PositionBadge position={player.position} />
+                    </span>
                   </li>
                 ))}
               </ul>

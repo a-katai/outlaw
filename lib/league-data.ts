@@ -244,9 +244,9 @@ const teamColors: Record<string, TeamColorPalette> = {
     border: "#2563eb",
   },
   "Tank Fillers": {
-    background: "#fef08a",
-    text: "#991b1b",
-    border: "#ef4444",
+    background: "#111111",
+    text: "#ffffff",
+    border: "#404040",
   },
   // Placeholder palette — no brand color on file for Krushers yet. Slate/graphite
   // chosen to read as a deliberate identity (not the neutral-gray fallback);

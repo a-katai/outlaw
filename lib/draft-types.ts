@@ -1,12 +1,13 @@
 // Row shapes mirroring supabase/migrations/0001_draft_and_payments.sql.
 // Hand-written (no generated types) — keep in sync with the migration.
 
-export type PlayerPosition = "F" | "D" | "G";
+export type PlayerPosition = "F" | "D" | "G" | "F/D";
 
 export type Player = {
   id: string;
   name: string;
   position: PlayerPosition | null;
+  rank: number | null;
   email: string | null;
   phone: string | null;
   created_at: string;
