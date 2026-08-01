@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import type { jsPDF as JsPDF } from "jspdf";
 
 import { getTeamColors, type SkaterStat, type TeamStanding } from "@/lib/league-data";
 import type { LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
@@ -62,7 +61,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
     ] as [number, number, number];
   };
 
-  const downloadStandingsPdf = () => {
+  const downloadStandingsPdf = async () => {
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text(`Outlaw Hockey League Standings — ${season.label}`, 14, 18);
@@ -100,7 +100,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
     doc.save(`outlaw-standings-${season.id}.pdf`);
   };
 
-  const downloadPlayerStatsPdf = () => {
+  const downloadPlayerStatsPdf = async () => {
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.text(`Outlaw Hockey League Player Stats — ${season.label}`, 14, 18);
@@ -134,8 +135,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
 
     if (subPlayers.length > 0) {
     autoTable(doc, {
-      startY: (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
-        ? ((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
+      startY: (doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+        ? ((doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
         : 40,
       head: [["Subs", "Team", "GP", "G", "A", "PTS", "PTS/GP"]],
       body: subPlayers.map((player) => [
@@ -180,7 +181,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
               href={`/stats?season=${s.id}`}
               scroll={false}
               className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                s.id === season.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+                s.id === season.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-600 hover:text-neutral-900"
               }`}
             >
               {s.label}

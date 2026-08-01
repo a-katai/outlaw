@@ -18,8 +18,9 @@ export function SiteFooter() {
           <Image
             src="/ohl_logo_letters.png"
             alt="Outlaw Hockey League"
-            width={220}
+            width={178}
             height={64}
+            sizes="(min-width: 768px) 320px, 342px"
             className="h-8 w-auto object-contain"
           />
           <p className="max-w-xs text-sm text-neutral-500">

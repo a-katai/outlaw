@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { getSeason } from "@/lib/league-data";
 import { getSeasonCatalogue, getSeasonLive } from "@/lib/live-season";
 import { StatsView, type StatsSeasonViewModel } from "./stats-view";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Stats — Outlaw Hockey League",
+  description: "Standings, skater stats, and rosters for every Outlaw Hockey League season.",
+};
 
 export default async function StatsPage({
   searchParams,

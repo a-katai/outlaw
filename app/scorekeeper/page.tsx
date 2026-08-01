@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
@@ -6,6 +7,11 @@ import { ScorekeeperLogin } from "./scorekeeper-login";
 import { ScorekeeperSignOut } from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Scorekeeper — Outlaw Hockey League",
+  description: "Sign in to score live Outlaw Hockey League games from the bench.",
+};
 
 function formatGameDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);

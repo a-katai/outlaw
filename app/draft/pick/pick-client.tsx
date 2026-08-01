@@ -175,7 +175,7 @@ export function PickClient() {
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-neutral-700">Team code</span>
             <input
-              className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-center text-lg font-semibold uppercase tracking-[0.3em] outline-none ring-blue-500/30 transition focus:ring-4"
+              className="min-w-0 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-center text-lg font-semibold uppercase tracking-[0.3em] outline-none ring-blue-500/30 transition focus:ring-4"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
               placeholder="ABC123"

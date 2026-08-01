@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Schedule — Outlaw Hockey League",
+  description: "Upcoming and completed games for the current Outlaw Hockey League season.",
+};
 
 function formatGameDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);

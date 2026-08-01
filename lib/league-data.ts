@@ -248,6 +248,14 @@ const teamColors: Record<string, TeamColorPalette> = {
     text: "#991b1b",
     border: "#ef4444",
   },
+  // Placeholder palette — no brand color on file for Krushers yet. Slate/graphite
+  // chosen to read as a deliberate identity (not the neutral-gray fallback);
+  // confirm with the team before treating this as final.
+  Krushers: {
+    background: "#e2e8f0",
+    text: "#1e293b",
+    border: "#475569",
+  },
 };
 
 export function getTeamColors(teamName: string): TeamColorPalette {

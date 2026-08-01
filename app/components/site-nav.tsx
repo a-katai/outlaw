@@ -8,13 +8,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const LOGO = "/ohl_logo_letters.png";
 
 const menuLinks = [
-  { href: "/", label: "Home" },
+  { href: "/schedule", label: "Schedule" },
   { href: "/stats", label: "Stats" },
   { href: "/playoffs", label: "Playoffs" },
   { href: "/draft", label: "Draft" },
-  { href: "/schedule", label: "Schedule" },
-  { href: "/payments", label: "Donate" },
   { href: "/videos", label: "Videos" },
+  { href: "/payments", label: "Donate" },
 ];
 
 export function SiteNav() {
@@ -52,14 +51,33 @@ export function SiteNav() {
           <Image
             src={LOGO}
             alt="Outlaw Hockey League"
-            width={220}
+            width={178}
             height={64}
+            sizes="(min-width: 768px) 111px, 89px"
             className="h-8 w-auto object-contain md:h-10"
             priority
           />
         </Link>
 
-        <div className="relative flex items-center">
+        <nav aria-label="Primary" className="hidden items-center gap-7 md:flex">
+          {menuLinks.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={active ? "page" : undefined}
+                className={`text-sm font-medium transition ${
+                  active ? "text-neutral-900" : "text-neutral-600 hover:text-neutral-900"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="relative flex items-center md:hidden">
           <button
             ref={buttonRef}
             type="button"

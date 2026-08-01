@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import { VideoGallery, type VideoItem } from "@/app/components/video-gallery";
 import videosData from "@/videos-data.json";
+
+export const metadata: Metadata = {
+  title: "Videos — Outlaw Hockey League",
+  description: "Latest game footage and highlights from the Outlaw Hockey League YouTube channel.",
+};
 
 export default async function VideosPage() {
   const videos = videosData as VideoItem[];

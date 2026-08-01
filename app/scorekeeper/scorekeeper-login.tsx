@@ -43,7 +43,7 @@ export function ScorekeeperLogin() {
         <label className="grid gap-1.5 text-sm">
           <span className="font-medium text-neutral-700">Access code</span>
           <input
-            className="rounded-xl border border-black/10 bg-white px-4 py-4 text-center text-2xl font-semibold uppercase tracking-[0.3em] outline-none ring-blue-500/30 transition focus:ring-4"
+            className="min-w-0 rounded-xl border border-black/10 bg-white px-4 py-4 text-center text-2xl font-semibold uppercase tracking-[0.3em] outline-none ring-blue-500/30 transition focus:ring-4"
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="ABC123"

@@ -45,7 +45,14 @@ export function VideoGallery({ videos }: { videos: VideoItem[] }) {
           <article key={video.id} className="glass-card lift overflow-hidden rounded-3xl">
             <a href={video.url} target="_blank" rel="noreferrer" className="block">
               <div className="relative aspect-video w-full">
-                <Image src={video.thumbnail} alt={video.title} fill className="object-cover" loading="lazy" />
+                <Image
+                  src={video.thumbnail}
+                  alt={video.title}
+                  fill
+                  sizes="(min-width: 1280px) 352px, (min-width: 768px) 45vw, 100vw"
+                  className="object-cover"
+                  loading="lazy"
+                />
                 <div className="pointer-events-none absolute inset-0 bg-black/20" />
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 shadow-lg">
@@ -56,7 +63,7 @@ export function VideoGallery({ videos }: { videos: VideoItem[] }) {
                   </span>
                 </div>
                 <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-white/80 p-1.5 backdrop-blur">
-                  <Image src="/ohl_logo_letters.png" alt="OHL" width={80} height={22} className="h-4 w-auto object-contain" loading="lazy" />
+                  <Image src="/ohl_logo_letters.png" alt="OHL" width={61} height={22} className="h-4 w-auto object-contain" loading="lazy" />
                 </div>
               </div>
               <div className="p-5">

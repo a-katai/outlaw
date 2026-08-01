@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Not found — Outlaw Hockey League",
+  description: "This game doesn't exist or the link is wrong.",
+};
 
 export default function GameNotFound() {
   return (

@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getPlayoffBracket, type PlayoffSeriesView } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Playoffs — Outlaw Hockey League",
+  description: "Live playoff bracket and series results for the Outlaw Hockey League.",
+};
 
 function formatChipDate(iso: string): string {
   const [, m, d] = iso.split("-").map(Number);

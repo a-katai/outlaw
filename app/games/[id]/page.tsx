@@ -200,7 +200,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               <article key={video.id} className="glass-card lift overflow-hidden rounded-3xl">
                 <a href={video.url} target="_blank" rel="noreferrer" className="block">
                   <div className="relative aspect-video w-full">
-                    <Image src={video.thumbnail} alt={video.title} fill className="object-cover" loading="lazy" />
+                    <Image
+                      src={video.thumbnail}
+                      alt={video.title}
+                      fill
+                      sizes="(min-width: 1280px) 352px, (min-width: 768px) 45vw, 100vw"
+                      className="object-cover"
+                      loading="lazy"
+                    />
                     <div className="pointer-events-none absolute inset-0 bg-black/20" />
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 shadow-lg">
