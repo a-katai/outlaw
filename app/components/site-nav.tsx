@@ -17,6 +17,22 @@ const menuLinks = [
   { href: "/payments", label: "Donate" },
 ];
 
+function AdminPortalButton() {
+  return (
+    <Link
+      href="/admin"
+      aria-label="League admin sign in"
+      title="League admin"
+      className="flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white/80 text-neutral-700 shadow-sm transition hover:bg-white hover:text-neutral-900"
+    >
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+        <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+      </svg>
+    </Link>
+  );
+}
+
 export function SiteNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -76,9 +92,11 @@ export function SiteNav() {
               </Link>
             );
           })}
+          <AdminPortalButton />
         </nav>
 
-        <div className="relative flex items-center md:hidden">
+        <div className="relative flex items-center gap-2 md:hidden">
+          <AdminPortalButton />
           <button
             ref={buttonRef}
             type="button"
