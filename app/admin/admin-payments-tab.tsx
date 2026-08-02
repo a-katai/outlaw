@@ -1,10 +1,97 @@
 "use client";
 
 import { Fragment, FormEvent, useMemo, useState } from "react";
-import type { PaymentMethod } from "@/lib/draft-types";
+import type { Payment, PaymentMethod, Player } from "@/lib/draft-types";
 import { AdminState, formatCents, postJSON } from "./admin-api";
 
 const METHODS: PaymentMethod[] = ["cash", "venmo", "zelle", "card", "check", "other"];
+
+// Fall 2026 dues: $150 deposit due Aug 10 to hold a spot; full cost is $650
+// skater / $100 goalie, with the deposit counting toward the total. A goalie's
+// full cost ($100) IS their deposit milestone — there's no separate goalie
+// deposit amount, so "deposit paid" for a goalie means paid-in-full.
+const DEPOSIT_CENTS = 15000;
+const GOALIE_TARGET_CENTS = 10000;
+const SKATER_TARGET_CENTS = 65000;
+
+function isGoalie(position: Player["position"]): boolean {
+  return position === "G";
+}
+
+function targetCents(position: Player["position"]): number {
+  return isGoalie(position) ? GOALIE_TARGET_CENTS : SKATER_TARGET_CENTS;
+}
+
+function depositThresholdCents(position: Player["position"]): number {
+  return isGoalie(position) ? GOALIE_TARGET_CENTS : DEPOSIT_CENTS;
+}
+
+type DuesRow = {
+  player: Player;
+  paidCents: number;
+  depositMet: boolean;
+  balanceCents: number;
+  paidInFull: boolean;
+  paymentCount: number;
+};
+
+function buildDuesBoard(players: Player[], payments: Payment[]): DuesRow[] {
+  const byPlayer = new Map<string, { totalCents: number; count: number }>();
+  for (const p of payments) {
+    if (!p.player_id) continue;
+    const entry = byPlayer.get(p.player_id) ?? { totalCents: 0, count: 0 };
+    entry.totalCents += p.amount_cents;
+    entry.count += 1;
+    byPlayer.set(p.player_id, entry);
+  }
+
+  return players.map((player) => {
+    const entry = byPlayer.get(player.id);
+    const paidCents = entry?.totalCents ?? 0;
+    const target = targetCents(player.position);
+    const balanceCents = Math.max(0, target - paidCents);
+    return {
+      player,
+      paidCents,
+      depositMet: paidCents >= depositThresholdCents(player.position),
+      balanceCents,
+      paidInFull: paidCents >= target,
+      paymentCount: entry?.count ?? 0,
+    };
+  });
+}
+
+function sortDuesBoard(rows: DuesRow[]): DuesRow[] {
+  // Chase list for Aug 10: unpaid-deposit players first, then partial
+  // (deposit met but not paid in full), then paid-in-full — alphabetical
+  // within each bucket.
+  const bucket = (r: DuesRow) => (r.paidInFull ? 2 : r.depositMet ? 1 : 0);
+  return [...rows].sort((a, b) => bucket(a) - bucket(b) || a.player.name.localeCompare(b.player.name));
+}
+
+function csvCell(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+function downloadDuesCsv(rows: DuesRow[]): void {
+  const header = ["Name", "Position", "Paid", "Deposit", "Balance"];
+  const csvRows = rows.map((r) => [
+    r.player.name,
+    r.player.position ?? "",
+    (r.paidCents / 100).toFixed(2),
+    r.depositMet ? "Y" : "N",
+    (r.balanceCents / 100).toFixed(2),
+  ]);
+  const csv = [header, ...csvRows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "outlaw-fall-2026-dues.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -17,18 +104,18 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
   const [payerName, setPayerName] = useState("");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [season, setSeason] = useState("Summer 2026");
+  const [season, setSeason] = useState("Fall 2026");
   const [paidOn, setPaidOn] = useState(todayISO());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
+  const [duesSearch, setDuesSearch] = useState("");
 
   const nameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
 
   const totalCents = payments.reduce((sum, p) => sum + p.amount_cents, 0);
-  const paidPlayerIds = new Set(payments.filter((p) => p.player_id).map((p) => p.player_id as string));
 
   const paymentsByPlayer = useMemo(() => {
     const map = new Map<string, typeof payments>();
@@ -44,16 +131,20 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
     return map;
   }, [payments]);
 
-  const rollup = useMemo(() => {
-    const byPlayer = new Map<string, number>();
-    for (const p of payments) {
-      if (!p.player_id) continue;
-      byPlayer.set(p.player_id, (byPlayer.get(p.player_id) ?? 0) + p.amount_cents);
-    }
-    return players
-      .map((p) => ({ id: p.id, name: p.name, totalCents: byPlayer.get(p.id) ?? 0, paid: byPlayer.has(p.id) }))
-      .sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
-  }, [players, payments]);
+  const duesBoard = useMemo(() => buildDuesBoard(players, payments), [players, payments]);
+
+  const duesSummary = useMemo(() => {
+    const depositsIn = duesBoard.filter((r) => r.depositMet).length;
+    const paidInFull = duesBoard.filter((r) => r.paidInFull).length;
+    const outstandingCents = duesBoard.reduce((sum, r) => sum + r.balanceCents, 0);
+    return { depositsIn, paidInFull, outstandingCents };
+  }, [duesBoard]);
+
+  const visibleDuesRows = useMemo(() => {
+    const q = duesSearch.trim().toLowerCase();
+    const filtered = q ? duesBoard.filter((r) => r.player.name.toLowerCase().includes(q)) : duesBoard;
+    return sortDuesBoard(filtered);
+  }, [duesBoard, duesSearch]);
 
   const unmatchedPayments = useMemo(
     () => payments.filter((p) => !p.player_id).sort((a, b) => (a.paid_on < b.paid_on ? 1 : a.paid_on > b.paid_on ? -1 : 0)),
@@ -91,16 +182,158 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <h1 className="text-2xl font-semibold text-neutral-900">Fall 2026 dues</h1>
+        <p className="mt-1 text-sm text-neutral-500">$150 deposit due August 10 · $650 skater / $100 goalie full cost.</p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="glass-card rounded-3xl p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Collected this season</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Total collected</p>
           <p className="mt-2 text-3xl font-semibold text-neutral-900">{formatCents(totalCents)}</p>
         </div>
         <div className="glass-card rounded-3xl p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Players paid</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Deposits in</p>
           <p className="mt-2 text-3xl font-semibold text-neutral-900">
-            {paidPlayerIds.size} <span className="text-lg font-normal text-neutral-500">/ {players.length}</span>
+            {duesSummary.depositsIn} <span className="text-lg font-normal text-neutral-500">/ {players.length}</span>
           </p>
+        </div>
+        <div className="glass-card rounded-3xl p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Paid in full</p>
+          <p className="mt-2 text-3xl font-semibold text-neutral-900">
+            {duesSummary.paidInFull} <span className="text-lg font-normal text-neutral-500">/ {players.length}</span>
+          </p>
+        </div>
+        <div className="glass-card rounded-3xl p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Outstanding</p>
+          <p className="mt-2 text-3xl font-semibold text-neutral-900">{formatCents(duesSummary.outstandingCents)}</p>
+        </div>
+      </div>
+      <p className="-mt-4 text-xs text-neutral-500">All recorded payments count toward fall dues.</p>
+
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-neutral-900">Dues board</h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="search"
+              value={duesSearch}
+              onChange={(e) => setDuesSearch(e.target.value)}
+              placeholder="Search name…"
+              className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+            />
+            <button
+              type="button"
+              onClick={() => downloadDuesCsv(visibleDuesRows)}
+              className="text-sm font-medium text-neutral-600 underline underline-offset-4 transition hover:text-neutral-900"
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
+        <div className="glass-card mt-4 max-h-[32rem] overflow-y-auto rounded-3xl">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-neutral-50/95 text-xs uppercase tracking-wide text-neutral-500">
+              <tr>
+                <th className="px-4 py-3">Player</th>
+                <th className="px-4 py-3">Paid to date</th>
+                <th className="px-4 py-3">Deposit</th>
+                <th className="px-4 py-3">Balance</th>
+                <th className="px-4 py-3">Payments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleDuesRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-neutral-500">
+                    No players match “{duesSearch}”.
+                  </td>
+                </tr>
+              ) : (
+                visibleDuesRows.map((r) => {
+                  const history = paymentsByPlayer.get(r.player.id) ?? [];
+                  const expanded = expandedPlayerId === r.player.id;
+                  return (
+                    <Fragment key={r.player.id}>
+                      <tr className="border-t border-black/5 text-neutral-700">
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-neutral-900">{r.player.name}</span>
+                          <span className="ml-2 inline-flex gap-1 align-middle">
+                            {r.player.position ? (
+                              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                {r.player.position}
+                              </span>
+                            ) : null}
+                            {r.player.rank ? (
+                              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                #{r.player.rank}
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">{formatCents(r.paidCents)}</td>
+                        <td className="px-4 py-3">
+                          {r.depositMet ? (
+                            <span className="text-sm font-semibold text-emerald-700">✓</span>
+                          ) : (
+                            <span className="text-sm font-semibold text-rose-400">✗</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.paidInFull ? (
+                            <span className="text-xs font-semibold text-emerald-700">Paid in full</span>
+                          ) : (
+                            <span className="font-medium text-neutral-900">{formatCents(r.balanceCents)}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {history.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPlayerId(expanded ? null : r.player.id)}
+                              className="text-xs font-medium text-neutral-500 hover:text-neutral-900"
+                            >
+                              {expanded ? "Hide" : `${history.length}`}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-neutral-400">0</span>
+                          )}
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="border-t border-black/5 bg-neutral-50/70">
+                          <td colSpan={5} className="px-4 py-3">
+                            <table className="w-full text-left text-xs">
+                              <thead className="text-neutral-500">
+                                <tr>
+                                  <th className="py-1 pr-4 font-medium uppercase tracking-wide">Date</th>
+                                  <th className="py-1 pr-4 font-medium uppercase tracking-wide">Amount</th>
+                                  <th className="py-1 pr-4 font-medium uppercase tracking-wide">Method</th>
+                                  <th className="py-1 font-medium uppercase tracking-wide">Note</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {history.map((p) => (
+                                  <tr key={p.id} className="border-t border-black/5 text-neutral-700">
+                                    <td className="py-1.5 pr-4">{p.paid_on}</td>
+                                    <td className="py-1.5 pr-4 font-medium text-neutral-900">
+                                      {formatCents(p.amount_cents)}
+                                    </td>
+                                    <td className="py-1.5 pr-4 capitalize">{p.method}</td>
+                                    <td className="py-1.5 text-neutral-500">{p.note ?? "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -267,82 +500,6 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
                   </tr>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div>
-        <h2 className="text-xl font-semibold text-neutral-900">Per-player rollup</h2>
-        <div className="glass-card mt-4 max-h-96 overflow-y-auto rounded-3xl">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-neutral-50/95 text-xs uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-3">Player</th>
-                <th className="px-4 py-3">Total paid</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {rollup.map((r) => {
-                const history = paymentsByPlayer.get(r.id) ?? [];
-                const expanded = expandedPlayerId === r.id;
-                return (
-                  <Fragment key={r.id}>
-                    <tr className="border-t border-black/5 text-neutral-700">
-                      <td className="px-4 py-3 font-medium text-neutral-900">{r.name}</td>
-                      <td className="px-4 py-3">{formatCents(r.totalCents)}</td>
-                      <td className="px-4 py-3">
-                        {r.paid ? (
-                          <span className="text-xs font-semibold text-emerald-700">Paid</span>
-                        ) : (
-                          <span className="text-xs font-semibold text-rose-600">Unpaid</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {history.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedPlayerId(expanded ? null : r.id)}
-                            className="text-xs font-medium text-neutral-500 hover:text-neutral-900"
-                          >
-                            {expanded ? "Hide" : `Details (${history.length})`}
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                    {expanded ? (
-                      <tr className="border-t border-black/5 bg-neutral-50/70">
-                        <td colSpan={4} className="px-4 py-3">
-                          <table className="w-full text-left text-xs">
-                            <thead className="text-neutral-500">
-                              <tr>
-                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Date</th>
-                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Amount</th>
-                                <th className="py-1 pr-4 font-medium uppercase tracking-wide">Method</th>
-                                <th className="py-1 font-medium uppercase tracking-wide">Note</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {history.map((p) => (
-                                <tr key={p.id} className="border-t border-black/5 text-neutral-700">
-                                  <td className="py-1.5 pr-4">{p.paid_on}</td>
-                                  <td className="py-1.5 pr-4 font-medium text-neutral-900">
-                                    {formatCents(p.amount_cents)}
-                                  </td>
-                                  <td className="py-1.5 pr-4 capitalize">{p.method}</td>
-                                  <td className="py-1.5 text-neutral-500">{p.note ?? "—"}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
             </tbody>
           </table>
         </div>
