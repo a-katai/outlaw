@@ -21,6 +21,7 @@ export function AdminDraftTab({ state, refetch }: { state: AdminState; refetch: 
 
   return (
     <div className="space-y-8">
+      <DraftNightRunbook />
       <DraftControlCard
         draft={draft}
         teamCount={teamCount}
@@ -30,6 +31,39 @@ export function AdminDraftTab({ state, refetch }: { state: AdminState; refetch: 
       <TeamManagement teams={orderedTeams} players={players} refetch={refetch} />
       <PlayerPool players={players} draftedPlayerIds={draftedPlayerIds} refetch={refetch} />
     </div>
+  );
+}
+
+const RUNBOOK_STEPS = [
+  "Set draft order on all 5 teams (1–5).",
+  "Generate a code for each team — text each captain theirs.",
+  "Create draft: snake, 12 rounds.",
+  "Open outlawhl.com/draft?tv=1 on the TV.",
+  "Start draft.",
+  "Captains pick at outlawhl.com/draft/pick.",
+  "Mis-pick? Undo (last pick) or Force pick (stuck captain).",
+  "Pause for beer runs — picks are blocked while paused.",
+  "Draft auto-completes at pick 60 → \"adopt draft teams\" in the Season tab seeds the season rosters.",
+];
+
+function DraftNightRunbook() {
+  return (
+    <details className="glass-card group rounded-3xl p-6 md:p-8">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-neutral-900 marker:content-none">
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-block transition group-open:rotate-90">›</span>
+          Draft night runbook
+        </span>
+      </summary>
+      <ol className="mt-4 space-y-1.5 text-sm text-neutral-600">
+        {RUNBOOK_STEPS.map((step, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="shrink-0 font-semibold text-neutral-400">{i + 1}.</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

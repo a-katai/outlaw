@@ -94,6 +94,48 @@ export function PausedBadge() {
   );
 }
 
+/** Large-format status badge for TV mode — readable from across the bar. */
+export function TvStatusBadge({ status }: { status: Draft["status"] | "complete" }) {
+  const styles: Record<string, string> = {
+    setup: "border-black/10 bg-neutral-100 text-neutral-600",
+    live: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    paused: "border-amber-200 bg-amber-50 text-amber-700",
+    complete: "border-black/10 bg-neutral-100 text-neutral-600",
+  };
+  const label: Record<string, string> = {
+    setup: "Setup",
+    live: "Live",
+    paused: "Paused",
+    complete: "Complete",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-5 py-2 text-2xl font-bold uppercase tracking-wide ${styles[status]}`}>
+      {label[status]}
+    </span>
+  );
+}
+
+/** Tiny discoverable link from the normal board to the TV takeover. */
+export function TvModeLink() {
+  return (
+    <Link
+      href="/draft?tv=1"
+      className="text-xs font-medium text-neutral-400 underline underline-offset-4 transition hover:text-neutral-700"
+    >
+      TV mode →
+    </Link>
+  );
+}
+
+/** Tiny unobtrusive link back to the normal board from TV mode. */
+export function TvExitLink() {
+  return (
+    <Link href="/draft" className="text-xs font-medium text-neutral-400 transition hover:text-neutral-700">
+      Exit
+    </Link>
+  );
+}
+
 export function TeamRosterCard({
   team,
   picks,
