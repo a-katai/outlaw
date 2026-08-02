@@ -86,6 +86,8 @@ function DraftControlCard({
   const [resetConfirm, setResetConfirm] = useState(false);
   const [forcePickId, setForcePickId] = useState<string | null>(null);
   const [forceSearch, setForceSearch] = useState("");
+  const [undoToPickInput, setUndoToPickInput] = useState("");
+  const [undoToPickConfirm, setUndoToPickConfirm] = useState(false);
 
   const act = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -94,6 +96,9 @@ function DraftControlCard({
       const data = await postJSON<{ ok: boolean; error?: string }>("/api/admin/draft", body);
       if (!data.ok) {
         setError(data.error ?? "Action failed");
+        // Some actions (e.g. undo-to-pick) can partially apply before failing —
+        // refetch so the UI never shows a stale current_pick/picks count.
+        await refetch();
         return;
       }
       await refetch();
@@ -259,6 +264,69 @@ function DraftControlCard({
       </div>
 
       {error ? <p className="mt-4 text-sm font-medium text-rose-600">{error}</p> : null}
+
+      {draft.status !== "setup" && draft.current_pick > 1 ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-4">
+          <span className="text-xs text-neutral-400">Rescue —</span>
+          <input
+            type="number"
+            min={1}
+            max={draft.current_pick - 1}
+            value={undoToPickInput}
+            onChange={(e) => {
+              setUndoToPickInput(e.target.value);
+              setUndoToPickConfirm(false);
+            }}
+            placeholder="Pick #"
+            className="w-20 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-xs text-neutral-600 outline-none ring-blue-500/30 focus:ring-4"
+          />
+          {undoToPickConfirm ? (
+            <>
+              <span className="text-xs font-medium text-rose-600">
+                This removes picks {undoToPickInput}–{draft.current_pick - 1}. Sure?
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  await act({
+                    action: "undo-to-pick",
+                    draftId: draft.id,
+                    targetPick: Number(undoToPickInput),
+                    confirm: true,
+                  });
+                  setUndoToPickConfirm(false);
+                  setUndoToPickInput("");
+                }}
+                className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                onClick={() => setUndoToPickConfirm(false)}
+                className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                busy ||
+                !Number.isInteger(Number(undoToPickInput)) ||
+                Number(undoToPickInput) < 1 ||
+                Number(undoToPickInput) >= draft.current_pick
+              }
+              onClick={() => setUndoToPickConfirm(true)}
+              className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-neutral-500 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Undo to pick #
+            </button>
+          )}
+        </div>
+      ) : null}
 
       {draft.status === "live" ? (
         <div className="mt-6 border-t border-black/5 pt-6">

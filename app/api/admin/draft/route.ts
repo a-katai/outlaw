@@ -10,6 +10,7 @@ type Body =
   | { action: "pause"; draftId: string }
   | { action: "resume"; draftId: string }
   | { action: "undo"; draftId: string }
+  | { action: "undo-to-pick"; draftId: string; targetPick: number; confirm?: boolean }
   | { action: "reset"; draftId: string; confirm?: boolean }
   | { action: "force-pick"; draftId: string; playerId: string };
 
@@ -106,6 +107,66 @@ export async function POST(req: NextRequest) {
       const { data, error } = await supabase.rpc("undo_last_pick", { p_draft_id: body.draftId });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       return NextResponse.json(data);
+    }
+
+    case "undo-to-pick": {
+      if (body.confirm !== true) {
+        return NextResponse.json({ ok: false, error: "Undo-to-pick requires confirmation" }, { status: 400 });
+      }
+      const targetPick = Number(body.targetPick);
+      if (!Number.isInteger(targetPick) || targetPick < 1) {
+        return NextResponse.json({ ok: false, error: "targetPick must be a positive whole number" }, { status: 400 });
+      }
+      const { data: draft, error: fetchError } = await supabase
+        .from("drafts")
+        .select("current_pick")
+        .eq("id", body.draftId)
+        .single();
+      if (fetchError || !draft) return NextResponse.json({ ok: false, error: "Draft not found" }, { status: 404 });
+      if (targetPick >= draft.current_pick) {
+        return NextResponse.json({ ok: false, error: "targetPick must be before the current pick" }, { status: 400 });
+      }
+
+      const CAP = 60;
+      let current = draft.current_pick;
+      let undone = 0;
+      while (current > targetPick) {
+        if (undone >= CAP) {
+          return NextResponse.json(
+            { ok: false, error: `Hit the ${CAP}-undo safety cap before reaching pick ${targetPick}`, undone },
+            { status: 500 },
+          );
+        }
+        const { data, error } = await supabase.rpc("undo_last_pick", { p_draft_id: body.draftId });
+        if (error) {
+          return NextResponse.json(
+            { ok: false, error: `${error.message} — ${undone} pick(s) already undone, refresh`, undone },
+            { status: 500 },
+          );
+        }
+        if (!data?.ok) {
+          return NextResponse.json(
+            { ok: false, error: `${data?.error ?? "Undo failed"} — ${undone} pick(s) already undone, refresh`, undone },
+            { status: 500 },
+          );
+        }
+        undone++;
+        current = data.undone_pick;
+      }
+
+      const { data: finalDraft, error: verifyError } = await supabase
+        .from("drafts")
+        .select("current_pick")
+        .eq("id", body.draftId)
+        .single();
+      if (verifyError || !finalDraft || finalDraft.current_pick !== targetPick) {
+        return NextResponse.json(
+          { ok: false, error: "Undo-to-pick finished but current_pick didn't land on targetPick", undone },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ ok: true, undone });
     }
 
     case "reset": {

@@ -39,6 +39,29 @@ export function isDraftComplete(currentPick: number, totalRounds: number, teamCo
   return currentPick > totalRounds * teamCount;
 }
 
+/**
+ * Picks remaining until the team at `teamOrder` (1-indexed draft_order) is
+ * next on the clock, counting from `currentPick` (0 if that team is on the
+ * clock right now). Returns null once the draft has no picks left at or
+ * after `currentPick`.
+ */
+export function picksUntilTurn(
+  currentPick: number,
+  teamOrder: number,
+  teamCount: number,
+  format: DraftFormat,
+  totalRounds: number,
+): number | null {
+  const lastPick = totalRounds * teamCount;
+  if (currentPick > lastPick) return null;
+  for (let pick = currentPick; pick <= lastPick; pick++) {
+    if (draftOrderOnClock(pick, teamCount, format) === teamOrder) {
+      return pick - currentPick;
+    }
+  }
+  return null;
+}
+
 export type GridCell = { round: number; pickNumber: number; draftOrder: number };
 
 /** Full round x team grid for board rendering: one cell per (round, slot). */

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { draftOrderOnClock, goalieCountsByTeam, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { draftOrderOnClock, goalieCountsByTeam, picksUntilTurn, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
 import { FormatBadge, GoalieChip, PositionBadge, RankBadge, StatusBadge } from "../draft-ui";
 import { useLiveDraft } from "../use-live-draft";
@@ -139,6 +139,30 @@ export function PickClient() {
   const onClockTeam = onClockOrder ? teamByDraftOrder.get(onClockOrder) : undefined;
   const isMyTurn = Boolean(draft?.status === "live" && myTeam && onClockTeam?.id === myTeam.id);
 
+  const picksUntilMyTurn =
+    draft && draft.status === "live" && !isMyTurn && myTeam?.draft_order && teamCount > 0
+      ? picksUntilTurn(draft.current_pick, myTeam.draft_order, teamCount, draft.format, draft.total_rounds)
+      : null;
+
+  // Grab your attention when your team lands on the clock: flash the tab
+  // title and (where supported) a short vibration. No sound. Restores the
+  // original title once you're off the clock or the page unmounts.
+  const [originalTitle] = useState(() => (typeof document !== "undefined" ? document.title : ""));
+  const wasMyTurnRef = useRef(false);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (isMyTurn) {
+      document.title = "🔔 Your pick — OHL Draft";
+      if (!wasMyTurnRef.current) navigator.vibrate?.([200, 100, 200]);
+    } else if (originalTitle) {
+      document.title = originalTitle;
+    }
+    wasMyTurnRef.current = isMyTurn;
+    return () => {
+      if (originalTitle) document.title = originalTitle;
+    };
+  }, [isMyTurn, originalTitle]);
+
   const { round: currentRound } = draft && teamCount > 0 ? roundAndSlot(draft.current_pick, teamCount) : { round: 1 };
   const remainingRounds = draft ? draft.total_rounds - currentRound + 1 : 0;
   const pastRound8 = currentRound > 8;
@@ -249,6 +273,11 @@ export function PickClient() {
               ? "You're on the clock — make your pick below."
               : `On the clock: ${onClockTeam?.name ?? "—"}`}
         </p>
+        {!isMyTurn && picksUntilMyTurn !== null ? (
+          <p className="mt-1 text-sm text-neutral-500">
+            {picksUntilMyTurn === 1 ? "You're up next" : `Your pick in ${picksUntilMyTurn}`}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
