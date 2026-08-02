@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminAuthed } from "@/lib/admin-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { generateTeamCode } from "@/lib/team-code";
 import type { DraftFormat } from "@/lib/draft-types";
 
 type Body =
@@ -9,7 +10,7 @@ type Body =
   | { action: "pause"; draftId: string }
   | { action: "resume"; draftId: string }
   | { action: "undo"; draftId: string }
-  | { action: "reset"; draftId: string }
+  | { action: "reset"; draftId: string; confirm?: boolean }
   | { action: "force-pick"; draftId: string; playerId: string };
 
 export async function POST(req: NextRequest) {
@@ -35,6 +36,18 @@ export async function POST(req: NextRequest) {
       }
       if (body.format !== "snake" && body.format !== "linear") {
         return NextResponse.json({ ok: false, error: "format must be snake or linear" }, { status: 400 });
+      }
+      const { data: liveDrafts, error: liveError } = await supabase
+        .from("drafts")
+        .select("id")
+        .in("status", ["live", "paused"])
+        .limit(1);
+      if (liveError) return NextResponse.json({ ok: false, error: liveError.message }, { status: 500 });
+      if (liveDrafts && liveDrafts.length > 0) {
+        return NextResponse.json(
+          { ok: false, error: "A draft is live — complete or reset it first." },
+          { status: 400 },
+        );
       }
       const { data, error } = await supabase
         .from("drafts")
@@ -96,6 +109,9 @@ export async function POST(req: NextRequest) {
     }
 
     case "reset": {
+      if (body.confirm !== true) {
+        return NextResponse.json({ ok: false, error: "Reset requires confirmation" }, { status: 400 });
+      }
       const { error: deleteError } = await supabase.from("draft_picks").delete().eq("draft_id", body.draftId);
       if (deleteError) return NextResponse.json({ ok: false, error: deleteError.message }, { status: 500 });
       const { data, error } = await supabase
@@ -115,13 +131,22 @@ export async function POST(req: NextRequest) {
       if (clockError || !teamId) {
         return NextResponse.json({ ok: false, error: clockError?.message ?? "No team on the clock" }, { status: 400 });
       }
-      const { data: codeRow, error: codeError } = await supabase
-        .from("team_codes")
-        .select("code")
-        .eq("team_id", teamId)
-        .single();
-      if (codeError || !codeRow) {
-        return NextResponse.json({ ok: false, error: "On-clock team has no pick code" }, { status: 400 });
+      let { data: codeRow } = await supabase.from("team_codes").select("code").eq("team_id", teamId).maybeSingle();
+      if (!codeRow) {
+        // Rescue path: the on-clock team never generated a code. Mint one
+        // server-side so the force-pick button never fails on this alone.
+        const { data: minted, error: mintError } = await supabase
+          .from("team_codes")
+          .upsert({ team_id: teamId, code: generateTeamCode() }, { onConflict: "team_id" })
+          .select("code")
+          .single();
+        if (mintError || !minted) {
+          return NextResponse.json(
+            { ok: false, error: mintError?.message ?? "Couldn't generate a pick code" },
+            { status: 500 },
+          );
+        }
+        codeRow = minted;
       }
       const { data, error } = await supabase.rpc("make_pick", {
         p_draft_id: body.draftId,

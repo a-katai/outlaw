@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { draftOrderOnClock, sortByRankThenName } from "@/lib/draft-logic";
+import { draftOrderOnClock, goalieCountsByTeam, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
-import { FormatBadge, PositionBadge, RankBadge, StatusBadge } from "../draft-ui";
+import { FormatBadge, GoalieChip, PositionBadge, RankBadge, StatusBadge } from "../draft-ui";
 import { useLiveDraft } from "../use-live-draft";
 
 const STORAGE_KEY = "outlaw_draft_code";
@@ -131,10 +131,19 @@ export function PickClient() {
     [picks, myTeam],
   );
   const playerNameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
+  const positionById = useMemo(() => new Map(players.map((p) => [p.id, p.position])), [players]);
+  const goalieCounts = useMemo(() => goalieCountsByTeam(picks, positionById), [picks, positionById]);
+  const myGoalieCount = myTeam ? goalieCounts.get(myTeam.id) ?? 0 : 0;
 
   const onClockOrder = draft && teamCount > 0 ? draftOrderOnClock(draft.current_pick, teamCount, draft.format) : null;
   const onClockTeam = onClockOrder ? teamByDraftOrder.get(onClockOrder) : undefined;
   const isMyTurn = Boolean(draft?.status === "live" && myTeam && onClockTeam?.id === myTeam.id);
+
+  const { round: currentRound } = draft && teamCount > 0 ? roundAndSlot(draft.current_pick, teamCount) : { round: 1 };
+  const remainingRounds = draft ? draft.total_rounds - currentRound + 1 : 0;
+  const pastRound8 = currentRound > 8;
+  const availableGoalieExists = useMemo(() => availablePlayers.some((p) => p.position === "G"), [availablePlayers]);
+  const lastChanceForGoalie = myGoalieCount === 0 && remainingRounds <= 2 && availableGoalieExists;
 
   const selectedPlayer = selectedPlayerId ? players.find((p) => p.id === selectedPlayerId) : null;
 
@@ -262,59 +271,74 @@ export function PickClient() {
               <p className="p-4 text-sm text-neutral-500">No players match.</p>
             ) : (
               <ul className="divide-y divide-black/5">
-                {availablePlayers.map((player) => (
-                  <li key={player.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Link
-                        href={`/players/${player.id}`}
-                        className="truncate text-sm text-neutral-800 transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
-                      >
-                        {player.name}
-                      </Link>
-                      <RankBadge rank={player.rank} />
-                      <PositionBadge position={player.position} />
-                    </div>
-                    {selectedPlayerId === player.id ? (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={confirmPick}
-                          disabled={submitting}
-                          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
-                        >
-                          {submitting ? "Drafting…" : `Draft ${player.name.split(" ")[0]} — confirm`}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedPlayerId(null)}
-                          disabled={submitting}
-                          className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
-                        >
-                          Cancel
-                        </button>
+                {availablePlayers.map((player) => {
+                  const isSelected = selectedPlayerId === player.id;
+                  const alreadyHasGoalieWarning = isSelected && player.position === "G" && myGoalieCount > 0;
+                  const lastChanceNudge = isSelected && player.position !== "G" && lastChanceForGoalie;
+                  return (
+                    <li key={player.id} className="flex flex-col gap-1 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Link
+                            href={`/players/${player.id}`}
+                            className="truncate text-sm text-neutral-800 transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
+                          >
+                            {player.name}
+                          </Link>
+                          <RankBadge rank={player.rank} />
+                          <PositionBadge position={player.position} />
+                        </div>
+                        {isSelected ? (
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={confirmPick}
+                              disabled={submitting}
+                              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                            >
+                              {submitting ? "Drafting…" : `Draft ${player.name.split(" ")[0]} — confirm`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPlayerId(null)}
+                              disabled={submitting}
+                              className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPickError(null);
+                              setSelectedPlayerId(player.id);
+                            }}
+                            disabled={!isMyTurn}
+                            className="shrink-0 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Pick
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPickError(null);
-                          setSelectedPlayerId(player.id);
-                        }}
-                        disabled={!isMyTurn}
-                        className="shrink-0 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Pick
-                      </button>
-                    )}
-                  </li>
-                ))}
+                      {alreadyHasGoalieWarning ? (
+                        <p className="text-xs font-medium text-amber-700">Your team already has a goalie.</p>
+                      ) : lastChanceNudge ? (
+                        <p className="text-xs font-medium text-amber-700">Last chance for a goalie.</p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold text-neutral-900">Your roster</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-neutral-900">Your roster</h2>
+            {myTeam ? <GoalieChip count={myGoalieCount} pastRound8={pastRound8} /> : null}
+          </div>
           <div className="glass-card mt-4 rounded-3xl p-5">
             {myPicks.length === 0 ? (
               <p className="text-sm text-neutral-500">No picks yet.</p>

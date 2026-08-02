@@ -1,7 +1,7 @@
 // Pure draft math — mirrors the SQL in team_on_clock()/make_pick() exactly.
 // Keep this file free of I/O so it stays unit-testable.
 
-import type { DraftFormat } from "./draft-types";
+import type { DraftFormat, DraftPick, PlayerPosition } from "./draft-types";
 
 export type RoundSlot = { round: number; slot: number };
 
@@ -52,4 +52,33 @@ export function buildDraftGrid(totalRounds: number, teamCount: number, format: D
     }
   }
   return grid;
+}
+
+// --- Goalie awareness (no hard block — league rule unknown, UI hints only) ---
+
+/** How many of a team's picks are a given position, given a player-id -> position lookup. */
+export function countPositionForTeam(
+  picks: Pick<DraftPick, "team_id" | "player_id">[],
+  teamId: string,
+  positionById: Map<string, PlayerPosition | null>,
+  position: PlayerPosition,
+): number {
+  let count = 0;
+  for (const pick of picks) {
+    if (pick.team_id === teamId && positionById.get(pick.player_id) === position) count++;
+  }
+  return count;
+}
+
+/** Map of teamId -> goalie ("G") count, for every team that has picked at least one. */
+export function goalieCountsByTeam(
+  picks: Pick<DraftPick, "team_id" | "player_id">[],
+  positionById: Map<string, PlayerPosition | null>,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const pick of picks) {
+    if (positionById.get(pick.player_id) !== "G") continue;
+    counts.set(pick.team_id, (counts.get(pick.team_id) ?? 0) + 1);
+  }
+  return counts;
 }

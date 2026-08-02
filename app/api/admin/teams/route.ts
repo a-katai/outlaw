@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { isAdminAuthed } from "@/lib/admin-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { generateTeamCode } from "@/lib/team-code";
 
 type Body =
   | { action: "add"; name: string; color?: string | null; draftOrder?: number | null; captainPlayerId?: string | null }
@@ -15,17 +15,6 @@ type Body =
     }
   | { action: "delete"; id: string }
   | { action: "generate-code"; id: string };
-
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I ambiguity
-
-function generateCode(): string {
-  const bytes = randomBytes(6);
-  let out = "";
-  for (let i = 0; i < 6; i++) {
-    out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
-  }
-  return out;
-}
 
 export async function POST(req: NextRequest) {
   if (!(await isAdminAuthed())) {
@@ -59,6 +48,42 @@ export async function POST(req: NextRequest) {
     }
 
     case "update": {
+      if (body.draftOrder !== undefined) {
+        const { data: latestDraft } = await supabase
+          .from("drafts")
+          .select("status")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestDraft && (latestDraft.status === "live" || latestDraft.status === "paused")) {
+          return NextResponse.json(
+            { ok: false, error: "Can't change draft order during a live draft" },
+            { status: 400 },
+          );
+        }
+
+        if (body.draftOrder !== null) {
+          if (!Number.isInteger(body.draftOrder) || body.draftOrder < 1 || body.draftOrder > 20) {
+            return NextResponse.json(
+              { ok: false, error: "Draft order must be a whole number between 1 and 20" },
+              { status: 400 },
+            );
+          }
+          const { data: clash } = await supabase
+            .from("teams")
+            .select("name")
+            .eq("draft_order", body.draftOrder)
+            .neq("id", body.id)
+            .maybeSingle();
+          if (clash) {
+            return NextResponse.json(
+              { ok: false, error: `${clash.name} already has draft order ${body.draftOrder}` },
+              { status: 400 },
+            );
+          }
+        }
+      }
+
       const patch: Record<string, unknown> = {};
       if (body.name !== undefined) patch.name = body.name.trim();
       if (body.color !== undefined) patch.color = body.color;
@@ -76,7 +101,7 @@ export async function POST(req: NextRequest) {
     }
 
     case "generate-code": {
-      const code = generateCode();
+      const code = generateTeamCode();
       const { data, error } = await supabase
         .from("team_codes")
         .upsert({ team_id: body.id, code }, { onConflict: "team_id" })

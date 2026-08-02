@@ -1,14 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { buildDraftGrid, draftOrderOnClock, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
+import { useEffect, useMemo, useState } from "react";
+import { buildDraftGrid, draftOrderOnClock, goalieCountsByTeam, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { Team } from "@/lib/draft-types";
-import { FormatBadge, PositionBadge, RankBadge, StatusBadge, TeamRosterCard } from "./draft-ui";
+import { FormatBadge, PausedBadge, PollingPill, PositionBadge, RankBadge, ReconnectingPill, StatusBadge, TeamRosterCard } from "./draft-ui";
 import { useLiveDraft } from "./use-live-draft";
 
+const STALE_CONNECTION_MS = 20000;
+
 export function DraftBoardClient() {
-  const { draft, teams, players, picks, loading, error } = useLiveDraft();
+  const { draft, teams, players, picks, loading, error, stale, connected, lastUpdated } = useLiveDraft();
+
+  // Ticks every 5s so the "last event/poll > 20s old" connection check
+  // recomputes even when nothing else re-renders the component.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+  const connectionStale = !connected || (lastUpdated !== null && now - lastUpdated > STALE_CONNECTION_MS);
 
   const orderedTeams = useMemo(
     () => teams.filter((t) => t.draft_order !== null).sort((a, b) => (a.draft_order ?? 0) - (b.draft_order ?? 0)),
@@ -18,6 +29,8 @@ export function DraftBoardClient() {
   const teamCount = orderedTeams.length;
 
   const playerNameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
+  const positionById = useMemo(() => new Map(players.map((p) => [p.id, p.position])), [players]);
+  const goalieCounts = useMemo(() => goalieCountsByTeam(picks, positionById), [picks, positionById]);
   const pickByNumber = useMemo(() => new Map(picks.map((p) => [p.pick_number, p])), [picks]);
   const teamByDraftOrder = useMemo(() => new Map(orderedTeams.map((t) => [t.draft_order as number, t])), [orderedTeams]);
   const draftedPlayerIds = useMemo(() => new Set(picks.map((p) => p.player_id)), [picks]);
@@ -76,7 +89,14 @@ export function DraftBoardClient() {
           <h2 className="text-xl font-semibold text-neutral-900">Final rosters</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {orderedTeams.map((team) => (
-              <TeamRosterCard key={team.id} team={team} picks={picks} playerNameById={playerNameById} />
+              <TeamRosterCard
+                key={team.id}
+                team={team}
+                picks={picks}
+                playerNameById={playerNameById}
+                goalieCount={goalieCounts.get(team.id) ?? 0}
+                pastRound8={true}
+              />
             ))}
           </div>
         </div>
@@ -88,12 +108,25 @@ export function DraftBoardClient() {
   const { round: currentRound } = teamCount > 0 ? roundAndSlot(draft.current_pick, teamCount) : { round: 1 };
   const onClockOrder = teamCount > 0 ? draftOrderOnClock(draft.current_pick, teamCount, draft.format) : null;
   const onClockTeam: Team | undefined = onClockOrder ? teamByDraftOrder.get(onClockOrder) : undefined;
+  const pastRound8 = currentRound > 8;
 
   return (
     <section className="space-y-8">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Live Draft</p>
-        <h1 className="mt-2 text-4xl font-semibold text-neutral-900">{draft.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-4xl font-semibold text-neutral-900">{draft.name}</h1>
+          {draft.status === "paused" ? <PausedBadge /> : null}
+        </div>
+        {stale ? (
+          <div className="mt-3">
+            <ReconnectingPill />
+          </div>
+        ) : connectionStale ? (
+          <div className="mt-3">
+            <PollingPill />
+          </div>
+        ) : null}
       </div>
 
       <div className="glass-card rounded-3xl p-6 md:p-8">
@@ -164,7 +197,9 @@ export function DraftBoardClient() {
                 {orderedTeams.map((team) => {
                   const cell = grid.find((c) => c.round === round && c.draftOrder === team.draft_order);
                   const pick = cell ? pickByNumber.get(cell.pickNumber) : undefined;
-                  const isOnClock = cell?.pickNumber === draft.current_pick && draft.status === "live";
+                  const isOnClock =
+                    cell?.pickNumber === draft.current_pick &&
+                    (draft.status === "live" || draft.status === "paused");
                   return (
                     <td
                       key={team.id}
@@ -222,7 +257,14 @@ export function DraftBoardClient() {
           <h2 className="text-xl font-semibold text-neutral-900">Rosters</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {orderedTeams.map((team) => (
-              <TeamRosterCard key={team.id} team={team} picks={picks} playerNameById={playerNameById} />
+              <TeamRosterCard
+                key={team.id}
+                team={team}
+                picks={picks}
+                playerNameById={playerNameById}
+                goalieCount={goalieCounts.get(team.id) ?? 0}
+                pastRound8={pastRound8}
+              />
             ))}
           </div>
         </div>

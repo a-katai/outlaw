@@ -196,7 +196,7 @@ function DraftControlCard({
                 type="button"
                 disabled={busy}
                 onClick={async () => {
-                  await act({ action: "reset", draftId: draft.id });
+                  await act({ action: "reset", draftId: draft.id, confirm: true });
                   setResetConfirm(false);
                 }}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
