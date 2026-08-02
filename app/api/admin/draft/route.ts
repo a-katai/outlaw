@@ -12,6 +12,7 @@ type Body =
   | { action: "undo"; draftId: string }
   | { action: "undo-to-pick"; draftId: string; targetPick: number; confirm?: boolean }
   | { action: "reset"; draftId: string; confirm?: boolean }
+  | { action: "delete-draft"; draftId: string; confirm?: boolean }
   | { action: "force-pick"; draftId: string; playerId: string };
 
 export async function POST(req: NextRequest) {
@@ -38,15 +39,18 @@ export async function POST(req: NextRequest) {
       if (body.format !== "snake" && body.format !== "linear") {
         return NextResponse.json({ ok: false, error: "format must be snake or linear" }, { status: 400 });
       }
+      // Only one non-complete draft may exist. A second 'setup' draft would
+      // shadow the live one everywhere "latest draft" is resolved, silently
+      // bypassing the live-draft guards.
       const { data: liveDrafts, error: liveError } = await supabase
         .from("drafts")
         .select("id")
-        .in("status", ["live", "paused"])
+        .in("status", ["setup", "live", "paused"])
         .limit(1);
       if (liveError) return NextResponse.json({ ok: false, error: liveError.message }, { status: 500 });
       if (liveDrafts && liveDrafts.length > 0) {
         return NextResponse.json(
-          { ok: false, error: "A draft is live — complete or reset it first." },
+          { ok: false, error: "A draft already exists — complete or delete it first." },
           { status: 400 },
         );
       }
@@ -183,6 +187,16 @@ export async function POST(req: NextRequest) {
         .single();
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true, draft: data });
+    }
+
+    case "delete-draft": {
+      if (body.confirm !== true) {
+        return NextResponse.json({ ok: false, error: "Delete requires confirmation" }, { status: 400 });
+      }
+      // Picks cascade via FK; this also frees the create guard for a fresh draft.
+      const { error } = await supabase.from("drafts").delete().eq("id", body.draftId);
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
     }
 
     case "force-pick": {

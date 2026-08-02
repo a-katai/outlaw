@@ -84,6 +84,7 @@ function DraftControlCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [forcePickId, setForcePickId] = useState<string | null>(null);
   const [forceSearch, setForceSearch] = useState("");
   const [undoToPickInput, setUndoToPickInput] = useState("");
@@ -260,6 +261,39 @@ function DraftControlCard({
               Reset draft
             </button>
           )}
+          {draft.status === "setup" ? (
+            deleteConfirm ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    await act({ action: "delete-draft", draftId: draft.id, confirm: true });
+                    setDeleteConfirm(false);
+                  }}
+                  className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                >
+                  Confirm delete draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(false)}
+                  className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDeleteConfirm(true)}
+                className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-500 transition hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Delete draft
+              </button>
+            )
+          ) : null}
         </div>
       </div>
 
