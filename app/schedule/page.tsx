@@ -1,7 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
-import { getTeamColors } from "@/lib/league-data";
+import {
+  formatGameDate,
+  NextGameCard,
+  PlayoffBadge,
+  recordFor,
+  sortChronological,
+  splitTimeRink,
+  TeamMarker,
+  timeSortKey,
+} from "@/app/components/next-game-card";
 
 export const dynamic = "force-dynamic";
 
@@ -10,36 +19,10 @@ export const metadata: Metadata = {
   description: "Upcoming and completed games for the current Outlaw Hockey League season.",
 };
 
-function formatGameDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const date = new Date(y, (m ?? 1) - 1, d ?? 1);
-  return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-}
-
 function monthLabel(iso: string): string {
   const [y, m] = iso.split("-").map(Number);
   const date = new Date(y, (m ?? 1) - 1, 1);
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
-}
-
-/** "10:30 PM · Rink A" -> { time: "10:30 PM", rink: "Rink A" }. Tolerates a bare time with no rink. */
-function splitTimeRink(raw: string | null): { time: string | null; rink: string | null } {
-  if (!raw) return { time: null, rink: null };
-  const [time, ...rest] = raw.split("·").map((part) => part.trim());
-  return { time: time || null, rink: rest.length ? rest.join(" · ") : null };
-}
-
-/** Minutes-since-midnight from a "10:30 PM"-style string, for same-date ordering. Unparseable times sort last. */
-function timeSortKey(raw: string | null): number {
-  const match = raw?.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!match) return Infinity;
-  let hour = Number(match[1]) % 12;
-  if (/PM/i.test(match[3])) hour += 12;
-  return hour * 60 + Number(match[2]);
-}
-
-function sortChronological(list: LiveGame[]): LiveGame[] {
-  return [...list].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : timeSortKey(a.time) - timeSortKey(b.time)));
 }
 
 function sortMostRecentFirst(list: LiveGame[]): LiveGame[] {
@@ -77,69 +60,6 @@ function groupByMonth(list: LiveGame[]): MonthGroup[] {
   return months;
 }
 
-function TeamDot({ name }: { name: string }) {
-  const colors = getTeamColors(name);
-  return <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colors.border }} aria-hidden />;
-}
-
-function PlayoffBadge() {
-  return (
-    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-      Playoff
-    </span>
-  );
-}
-
-/** W-L-T for a team, or null if the league hasn't started keeping score yet. */
-function recordFor(name: string, recordsByTeam: Map<string, string> | null): string | null {
-  return recordsByTeam?.get(name) ?? null;
-}
-
-function NextGameCard({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<string, string> | null }) {
-  const { time, rink } = splitTimeRink(game.time);
-  const awayColors = getTeamColors(game.awayTeam);
-  const homeColors = getTeamColors(game.homeTeam);
-  const awayRecord = recordFor(game.awayTeam, recordsByTeam);
-  const homeRecord = recordFor(game.homeTeam, recordsByTeam);
-
-  return (
-    <Link href={`/games/${game.id}`} className="group glass-card lift block overflow-hidden rounded-3xl">
-      <div className="p-6 sm:p-8 md:p-10">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Next game</p>
-          {game.gameType === "playoff" ? <PlayoffBadge /> : null}
-        </div>
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: awayColors.border }} aria-hidden />
-            <span className="text-3xl font-semibold text-neutral-900 md:text-4xl">{game.awayTeam}</span>
-            {awayRecord ? <span className="text-sm font-medium text-neutral-400">{awayRecord}</span> : null}
-          </div>
-          <span className="text-lg font-normal text-neutral-400 sm:text-xl">at</span>
-          <div className="flex items-center gap-2.5">
-            <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: homeColors.border }} aria-hidden />
-            <span className="text-3xl font-semibold text-neutral-900 md:text-4xl">{game.homeTeam}</span>
-            {homeRecord ? <span className="text-sm font-medium text-neutral-400">{homeRecord}</span> : null}
-          </div>
-        </div>
-
-        <div className="mt-7 flex flex-wrap items-end justify-between gap-6 border-t border-black/5 pt-6">
-          <p className="text-sm font-medium text-neutral-500">{formatGameDate(game.date)}</p>
-          <div className="text-right">
-            {time ? (
-              <p className="text-2xl font-semibold tabular-nums text-neutral-900 md:text-3xl">{time}</p>
-            ) : (
-              <p className="text-2xl font-semibold text-neutral-400 md:text-3xl">TBD</p>
-            )}
-            {rink ? <p className="mt-1 text-sm text-neutral-500">{rink}</p> : null}
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function GameRow({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<string, string> | null }) {
   const isFinal = game.status === "final" && game.homeScore !== null && game.awayScore !== null;
   const isLive = game.status === "live";
@@ -157,7 +77,7 @@ function GameRow({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<s
     <Link href={`/games/${game.id}`} className="group flex items-center justify-between gap-4 px-5 py-4 transition hover:bg-neutral-50/80">
       <div className="flex min-w-0 flex-col gap-2">
         <div className="flex items-center gap-2 text-base">
-          <TeamDot name={game.awayTeam} />
+          <TeamMarker name={game.awayTeam} size={24} dotSize={10} />
           <span className={`${awayNameClass} truncate`}>{game.awayTeam}</span>
           {awayRecord ? <span className="shrink-0 text-xs font-medium text-neutral-400">{awayRecord}</span> : null}
         </div>

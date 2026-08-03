@@ -3,7 +3,14 @@ import { createBrowserClient } from "./supabase";
 import { sortByRankThenName } from "./draft-logic";
 import type { PlayerPosition } from "./draft-types";
 import { getArchiveSkaterLine, type SkaterStat } from "./league-data";
-import { aggregateSkaterStats, type GameStatDbRow, type GameRosterDbRow, type GameType } from "./live-season";
+import {
+  aggregateSkaterStats,
+  computeGoalieStats,
+  type GameStatDbRow,
+  type GameRosterDbRow,
+  type GameType,
+  type GoalieGameInput,
+} from "./live-season";
 
 // --- /players pool ---
 
@@ -76,14 +83,40 @@ export type PlayerGameLogRow = {
   assists: number;
 };
 
+export type PlayerGoalieCareerRow = {
+  seasonId: string;
+  seasonLabel: string;
+  gameType: GameType;
+  gp: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  goalsAgainst: number;
+  gaa: number;
+  shutouts: number;
+};
+
+export type PlayerGoalieGameLogRow = {
+  gameId: string;
+  date: string;
+  matchup: string;
+  result: "W" | "L" | "T";
+  goalsAgainst: number;
+};
+
 export type PlayerProfile = {
   id: string;
   name: string;
   position: PlayerPosition | null;
   rank: number | null;
   teamName: string | null; // drafted team name in the active season, else null
+  // Skater shape — populated for non-goalie positions only.
   career: PlayerCareerRow[]; // DB seasons, newest first; playoff row only if it has GP
   gameLog: PlayerGameLogRow[]; // this player's final games, newest first
+  // Goalie shape — populated only when position === 'G'. Archive predates
+  // goalie tracking, so there's no goalie equivalent of archiveLine.
+  goalieCareer: PlayerGoalieCareerRow[];
+  goalieGameLog: PlayerGoalieGameLogRow[];
   archiveLine: SkaterStat | null; // 2025–26 static archive line, if matched
 };
 
@@ -142,14 +175,18 @@ export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile 
 
   const gameIds = Array.from(new Set([...statRows.map((s) => s.game_id), ...rosterRows.map((r) => r.game_id)]));
 
+  const isGoalie = player.position === "G";
+
   let career: PlayerCareerRow[] = [];
   let gameLog: PlayerGameLogRow[] = [];
+  let goalieCareer: PlayerGoalieCareerRow[] = [];
+  let goalieGameLog: PlayerGoalieGameLogRow[] = [];
 
   if (gameIds.length) {
     const [gamesRes, seasonsRes] = await Promise.all([
       supabase
         .from("games")
-        .select("id,season_id,game_date,status,game_type,home_team_id,away_team_id")
+        .select("id,season_id,game_date,status,game_type,home_team_id,away_team_id,home_score,away_score")
         .in("id", gameIds),
       supabase.from("seasons").select("id,label").order("created_at", { ascending: false }),
     ]);
@@ -167,8 +204,8 @@ export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile 
       : { data: [] as { id: string; name: string }[] };
     const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
 
-    // Career rows: bucket final games by (season, gameType), aggregate with
-    // the shared GP-union helper, keep only buckets where this player has GP.
+    // Bucket final games by (season, gameType) — shared by both the skater
+    // and goalie career paths below.
     const buckets = new Map<string, Set<string>>();
     for (const g of games) {
       const key = `${g.season_id}::${g.game_type}`;
@@ -176,44 +213,116 @@ export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile 
       set.add(g.id);
       buckets.set(key, set);
     }
-    const careerRows: PlayerCareerRow[] = [];
-    for (const [key, bucketGameIds] of buckets) {
-      const [seasonId, gameType] = key.split("::") as [string, GameType];
-      const agg = aggregateSkaterStats(bucketGameIds, gameDateById, statRows, rosterRows).get(id);
-      if (!agg || agg.gamesPlayed === 0) continue;
-      careerRows.push({
-        seasonId,
-        seasonLabel: seasonLabelById.get(seasonId) ?? seasonId,
-        gameType,
-        gamesPlayed: agg.gamesPlayed,
-        goals: agg.goals,
-        assists: agg.assists,
-        points: agg.goals + agg.assists,
-      });
-    }
-    careerRows.sort((a, b) => {
-      const orderA = seasonOrder.get(a.seasonId) ?? 0;
-      const orderB = seasonOrder.get(b.seasonId) ?? 0;
-      if (orderA !== orderB) return orderA - orderB; // newest season first
-      if (a.gameType === b.gameType) return 0;
-      return a.gameType === "regular" ? -1 : 1; // regular row before its playoff row
-    });
-    career = careerRows;
 
-    // Game log: every final game, newest first, with this player's G/A that game.
-    const statByGame = new Map(statRows.map((s) => [s.game_id, s]));
-    gameLog = games
-      .map((g) => {
-        const s = statByGame.get(g.id);
-        return {
-          gameId: g.id,
-          date: g.game_date,
-          matchup: `${teamNameById.get(g.away_team_id) ?? "TBD"} at ${teamNameById.get(g.home_team_id) ?? "TBD"}`,
-          goals: s?.goals ?? 0,
-          assists: s?.assists ?? 0,
-        };
-      })
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const sortCareerRows = <T extends { seasonId: string; gameType: GameType }>(rows: T[]): T[] =>
+      [...rows].sort((a, b) => {
+        const orderA = seasonOrder.get(a.seasonId) ?? 0;
+        const orderB = seasonOrder.get(b.seasonId) ?? 0;
+        if (orderA !== orderB) return orderA - orderB; // newest season first
+        if (a.gameType === b.gameType) return 0;
+        return a.gameType === "regular" ? -1 : 1; // regular row before its playoff row
+      });
+
+    if (isGoalie) {
+      // Career rows: bucket final games by (season, gameType), aggregate with
+      // the shared goalie helper (scoped to this one player), keep only
+      // buckets where this player has GP.
+      const goalieCareerRows: PlayerGoalieCareerRow[] = [];
+      for (const [key, bucketGameIds] of buckets) {
+        const [seasonId, gameType] = key.split("::") as [string, GameType];
+        const bucketGames: GoalieGameInput[] = games
+          .filter((g) => bucketGameIds.has(g.id) && g.home_score !== null && g.away_score !== null)
+          .map((g) => ({
+            id: g.id,
+            date: g.game_date,
+            homeTeamId: g.home_team_id,
+            awayTeamId: g.away_team_id,
+            homeScore: g.home_score as number,
+            awayScore: g.away_score as number,
+          }));
+        const bucketRosterRows = rosterRows.filter((r) => bucketGameIds.has(r.game_id));
+        const bucketStatRows = statRows.filter((s) => bucketGameIds.has(s.game_id));
+        const [line] = computeGoalieStats(
+          bucketGames,
+          bucketRosterRows,
+          bucketStatRows,
+          [{ id: player.id, name: player.name, position: player.position }],
+          teamsRes.data ?? [],
+        );
+        if (!line || line.gp === 0) continue;
+        goalieCareerRows.push({
+          seasonId,
+          seasonLabel: seasonLabelById.get(seasonId) ?? seasonId,
+          gameType,
+          gp: line.gp,
+          wins: line.wins,
+          losses: line.losses,
+          ties: line.ties,
+          goalsAgainst: line.goalsAgainst,
+          gaa: line.gaa,
+          shutouts: line.shutouts,
+        });
+      }
+      goalieCareer = sortCareerRows(goalieCareerRows);
+
+      // Game log: every final game, newest first, with this goalie's team
+      // result + GA that game (not G/A — a goalie's box score is defense).
+      const teamIdByGame = new Map<string, string>();
+      for (const r of rosterRows) teamIdByGame.set(r.game_id, r.team_id);
+      for (const s of statRows) if (!teamIdByGame.has(s.game_id)) teamIdByGame.set(s.game_id, s.team_id);
+
+      goalieGameLog = games
+        .filter((g) => g.home_score !== null && g.away_score !== null && teamIdByGame.has(g.id))
+        .map((g) => {
+          const teamId = teamIdByGame.get(g.id)!;
+          const isHome = teamId === g.home_team_id;
+          const teamScore = isHome ? (g.home_score as number) : (g.away_score as number);
+          const oppScore = isHome ? (g.away_score as number) : (g.home_score as number);
+          const result: "W" | "L" | "T" = teamScore > oppScore ? "W" : teamScore < oppScore ? "L" : "T";
+          return {
+            gameId: g.id,
+            date: g.game_date,
+            matchup: `${teamNameById.get(g.away_team_id) ?? "TBD"} at ${teamNameById.get(g.home_team_id) ?? "TBD"}`,
+            result,
+            goalsAgainst: oppScore,
+          };
+        })
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    } else {
+      // Career rows: bucket final games by (season, gameType), aggregate with
+      // the shared GP-union helper, keep only buckets where this player has GP.
+      const careerRows: PlayerCareerRow[] = [];
+      for (const [key, bucketGameIds] of buckets) {
+        const [seasonId, gameType] = key.split("::") as [string, GameType];
+        const agg = aggregateSkaterStats(bucketGameIds, gameDateById, statRows, rosterRows).get(id);
+        if (!agg || agg.gamesPlayed === 0) continue;
+        careerRows.push({
+          seasonId,
+          seasonLabel: seasonLabelById.get(seasonId) ?? seasonId,
+          gameType,
+          gamesPlayed: agg.gamesPlayed,
+          goals: agg.goals,
+          assists: agg.assists,
+          points: agg.goals + agg.assists,
+        });
+      }
+      career = sortCareerRows(careerRows);
+
+      // Game log: every final game, newest first, with this player's G/A that game.
+      const statByGame = new Map(statRows.map((s) => [s.game_id, s]));
+      gameLog = games
+        .map((g) => {
+          const s = statByGame.get(g.id);
+          return {
+            gameId: g.id,
+            date: g.game_date,
+            matchup: `${teamNameById.get(g.away_team_id) ?? "TBD"} at ${teamNameById.get(g.home_team_id) ?? "TBD"}`,
+            goals: s?.goals ?? 0,
+            assists: s?.assists ?? 0,
+          };
+        })
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    }
   }
 
   return {
@@ -224,6 +333,8 @@ export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile 
     teamName,
     career,
     gameLog,
+    goalieCareer,
+    goalieGameLog,
     archiveLine: getArchiveSkaterLine(player.name),
   };
 });

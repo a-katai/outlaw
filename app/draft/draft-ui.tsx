@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
 import type { Draft, DraftPick, Player, Team } from "@/lib/draft-types";
 
 export function FormatBadge({ format }: { format: Draft["format"] }) {
@@ -153,7 +154,10 @@ export function TeamRosterCard({
   return (
     <div className="glass-card rounded-3xl p-5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-neutral-900">{team.name}</h3>
+        <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-neutral-900">
+          {teamLogo(team.name) ? <TeamLogo name={team.name} size={24} /> : null}
+          <span className="truncate">{team.name}</span>
+        </h3>
         <span className="flex shrink-0 items-center gap-1.5">
           <GoalieChip count={goalieCount} pastRound8={pastRound8} />
           <span className="text-xs text-neutral-500">{teamPicks.length} picked</span>

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { buildDraftGrid, draftOrderOnClock, goalieCountsByTeam, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import { getTeamColors } from "@/lib/league-data";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
 import type { Draft, DraftPick, Team } from "@/lib/draft-types";
 import {
   FormatBadge,
@@ -290,7 +291,10 @@ function DraftBoardInner() {
               <th className="px-4 py-3">Round</th>
               {orderedTeams.map((team) => (
                 <th key={team.id} className="px-4 py-3">
-                  {team.name}
+                  <span className="flex items-center gap-2">
+                    {teamLogo(team.name) ? <TeamLogo name={team.name} size={28} /> : null}
+                    <span>{team.name}</span>
+                  </span>
                 </th>
               ))}
             </tr>
@@ -426,12 +430,17 @@ function TvBoard({
   );
   for (const team of orderedTeams) {
     const colors = teamColorsById.get(team.id);
+    const hasLogo = Boolean(teamLogo(team.name));
     cells.push(
       <div
         key={`head-${team.id}`}
         className="flex items-center justify-center gap-2 border-b border-l border-black/10 px-2 text-center text-base font-semibold uppercase tracking-wide text-neutral-700"
       >
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors?.border }} aria-hidden />
+        {hasLogo ? (
+          <TeamLogo name={team.name} size={40} />
+        ) : (
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors?.border }} aria-hidden />
+        )}
         <span className="truncate">{team.name}</span>
       </div>,
     );

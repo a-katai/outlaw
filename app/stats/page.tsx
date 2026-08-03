@@ -33,6 +33,7 @@ export default async function StatsPage({
       label: dbSeason.label,
       standings: dbSeason.standings,
       skaters: dbSeason.skaters,
+      goalies: dbSeason.goalies,
       teams: dbSeason.teams,
       rosters: dbSeason.rosters,
       hasFinalGames: dbSeason.games.some((g) => g.status === "final" && g.gameType === "regular"),

@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPlayerProfile } from "@/lib/players";
+import { getPlayerProfile, type PlayerGoalieCareerRow } from "@/lib/players";
 import { getTeamColors } from "@/lib/league-data";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
 import { PositionBadge, RankBadge } from "@/app/draft/draft-ui";
 import { matchPlayerFilm } from "@/lib/game-film";
 import type { VideoItem } from "@/app/components/video-gallery";
@@ -48,6 +49,8 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
   const profile = await getPlayerProfile(id);
   if (!profile) notFound();
 
+  const isGoalie = profile.position === "G";
+
   const displayRows: DisplayCareerRow[] = [
     ...profile.career.map((r) => ({
       key: `${r.seasonId}-${r.gameType}`,
@@ -91,15 +94,75 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
           <PositionBadge position={profile.position} />
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3 flex items-center gap-2.5">
           {profile.teamName ? (
-            <TeamPill name={profile.teamName} />
+            <>
+              {teamLogo(profile.teamName) ? <TeamLogo name={profile.teamName} size={24} /> : null}
+              <TeamPill name={profile.teamName} />
+            </>
           ) : (
             <span className="text-sm font-medium text-neutral-400">Awaiting draft</span>
           )}
         </div>
       </div>
 
+      {isGoalie ? (
+        <div>
+          <h2 className="text-2xl font-semibold text-neutral-900">Career</h2>
+          {profile.goalieCareer.length === 0 && !profile.archiveLine ? (
+            <div className="glass-card mt-4 rounded-3xl p-8 text-center">
+              <p className="text-sm text-neutral-500">First season on record starts this fall.</p>
+            </div>
+          ) : (
+            <>
+              {profile.goalieCareer.length > 0 ? (
+                <div className="glass-card mt-4 overflow-x-auto rounded-3xl">
+                  <table className="w-full min-w-[520px] text-left text-sm">
+                    <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
+                      <tr>
+                        <th className="px-4 py-3">Season</th>
+                        <th className="px-4 py-3">GP</th>
+                        <th className="px-4 py-3">W</th>
+                        <th className="px-4 py-3">L</th>
+                        <th className="px-4 py-3">T</th>
+                        <th className="px-4 py-3">GA</th>
+                        <th className="px-4 py-3">GAA</th>
+                        <th className="px-4 py-3">SO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {profile.goalieCareer.map((r: PlayerGoalieCareerRow) => (
+                        <tr key={`${r.seasonId}-${r.gameType}`} className="border-t border-black/5 text-neutral-700">
+                          <td className="px-4 py-3 font-semibold text-neutral-900">
+                            {r.gameType === "playoff" ? `${r.seasonLabel} · Playoffs` : r.seasonLabel}
+                          </td>
+                          <td className="px-4 py-3">{r.gp}</td>
+                          <td className="px-4 py-3">{r.wins}</td>
+                          <td className="px-4 py-3">{r.losses}</td>
+                          <td className="px-4 py-3">{r.ties}</td>
+                          <td className="px-4 py-3">{r.goalsAgainst}</td>
+                          <td className="px-4 py-3 font-semibold text-neutral-900">{r.gaa.toFixed(2)}</td>
+                          <td className="px-4 py-3">{r.shutouts}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="glass-card mt-4 rounded-3xl p-8 text-center">
+                  <p className="text-sm text-neutral-500">First season in net starts this fall.</p>
+                </div>
+              )}
+              {profile.archiveLine ? (
+                <p className="mt-3 text-xs text-neutral-500">
+                  2025–26 (recorded as a skater, before goalie tracking): {profile.archiveLine.gamesPlayed} GP,{" "}
+                  {profile.archiveLine.goals}G, {profile.archiveLine.assists}A, {profile.archiveLine.points} PTS
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : (
       <div>
         <h2 className="text-2xl font-semibold text-neutral-900">Career</h2>
         {displayRows.length === 0 ? (
@@ -159,8 +222,34 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
           </>
         )}
       </div>
+      )}
 
-      {profile.gameLog.length > 0 ? (
+      {isGoalie && profile.goalieGameLog.length > 0 ? (
+        <div>
+          <h2 className="text-2xl font-semibold text-neutral-900">Game log</h2>
+          <div className="glass-card mt-4 divide-y divide-black/5 overflow-hidden rounded-3xl">
+            {profile.goalieGameLog.map((g) => (
+              <Link
+                key={g.gameId}
+                href={`/games/${g.gameId}`}
+                className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-neutral-50/80"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-neutral-900">{g.matchup}</p>
+                  <p className="text-xs text-neutral-500">{formatGameDate(g.date)}</p>
+                </div>
+                <p className="shrink-0 text-sm text-neutral-600">
+                  <span className={`font-semibold ${g.result === "W" ? "text-neutral-900" : "text-neutral-500"}`}>{g.result}</span>
+                  {" · "}
+                  {g.goalsAgainst} GA
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!isGoalie && profile.gameLog.length > 0 ? (
         <div>
           <h2 className="text-2xl font-semibold text-neutral-900">Game log</h2>
           <div className="glass-card mt-4 divide-y divide-black/5 overflow-hidden rounded-3xl">

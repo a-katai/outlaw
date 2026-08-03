@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { PlayoffBracket, PlayoffSeriesView } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
 
 // --- Shared helpers ---------------------------------------------------
 
@@ -84,6 +85,7 @@ function SlotRow({
     >
       <span className="flex items-center gap-1.5">
         {fixedSeedNumber ? <span className="text-[10px] font-medium text-neutral-400">{fixedSeedNumber}</span> : null}
+        {teamLogo(name) ? <TeamLogo name={name} size={24} /> : null}
         <span
           className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
           style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}

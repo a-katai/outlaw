@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getGameDetail, type GameStatLine, type LineupPlayer } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
 import { matchGameFilm } from "@/lib/game-film";
 import { LiveGameFeed } from "./live-game-feed";
 import type { VideoItem } from "@/app/components/video-gallery";
@@ -19,11 +20,14 @@ function formatGameDate(iso: string): string {
 function TeamPill({ name }: { name: string }) {
   const colors = getTeamColors(name);
   return (
-    <span
-      className="inline-flex items-center rounded-full border px-3 py-1.5 text-base font-semibold md:text-lg"
-      style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
-    >
-      {name}
+    <span className="inline-flex items-center gap-2">
+      {teamLogo(name) ? <TeamLogo name={name} size={56} /> : null}
+      <span
+        className="inline-flex items-center rounded-full border px-3 py-1.5 text-base font-semibold md:text-lg"
+        style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+      >
+        {name}
+      </span>
     </span>
   );
 }
@@ -33,11 +37,14 @@ function LineupCard({ teamName, players }: { teamName: string; players: LineupPl
   return (
     <div className="glass-card rounded-3xl p-5">
       <div className="flex items-center justify-between gap-2">
-        <span
-          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-          style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
-        >
-          {teamName}
+        <span className="inline-flex items-center gap-2">
+          {teamLogo(teamName) ? <TeamLogo name={teamName} size={28} /> : null}
+          <span
+            className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+            style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+          >
+            {teamName}
+          </span>
         </span>
         <span className="text-xs font-medium text-neutral-500">{players.length} dressed</span>
       </div>
@@ -65,11 +72,14 @@ function BoxScoreCard({ teamName, scorers }: { teamName: string; scorers: GameSt
   const colors = getTeamColors(teamName);
   return (
     <div className="glass-card rounded-3xl p-6">
-      <span
-        className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-        style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
-      >
-        {teamName}
+      <span className="inline-flex items-center gap-2">
+        {teamLogo(teamName) ? <TeamLogo name={teamName} size={28} /> : null}
+        <span
+          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+          style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+        >
+          {teamName}
+        </span>
       </span>
       <div className="mt-4 space-y-2 text-sm">
         {scorers.length === 0 ? (

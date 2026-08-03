@@ -44,12 +44,26 @@ export type LiveGame = {
   seriesId: string | null;
 };
 
+export type GoalieStat = {
+  playerId: string;
+  player: string;
+  team: string;
+  gp: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  goalsAgainst: number;
+  gaa: number;
+  shutouts: number;
+};
+
 export type LiveSeason = {
   id: string;
   label: string;
   status: SeasonStatus;
   standings: TeamStanding[];
   skaters: SkaterStat[];
+  goalies: GoalieStat[];
   games: LiveGame[];
   teams: LiveTeam[];
   rosters: Record<string, LiveRosterPlayer[]>; // keyed by team name
@@ -119,6 +133,123 @@ export function aggregateSkaterStats(
   for (const [playerId, agg] of aggByPlayer) {
     result.set(playerId, { gamesPlayed: agg.gpGames.size, goals: agg.goals, assists: agg.assists, teamId: agg.teamId });
   }
+  return result;
+}
+
+// --- Goalie aggregation ---
+
+export type GoalieGameInput = {
+  id: string;
+  date: string; // ISO date — used to pick "team of record" the same way aggregateSkaterStats does (most recent appearance)
+  homeTeamId: string;
+  awayTeamId: string;
+  homeScore: number;
+  awayScore: number;
+};
+export type GoaliePlayerInput = { id: string; name: string; position: string | null };
+export type GoalieTeamInput = { id: string; name: string };
+
+/**
+ * Goalie stats over a set of FINAL games (regular season, in getSeasonLive's
+ * case). Pure function, no Supabase — takes exactly the rows it needs so it
+ * can be unit-tested without a DB.
+ *
+ * Beer-league assumption: normally one goalie dresses per team per game, but
+ * if game_rosters (or game_stats) shows two goalies checked in for the same
+ * team in the same game, BOTH get full credit for that game (a mid-game
+ * goalie swap is real beer-league life) — this is a deliberate choice, not a
+ * dedup bug.
+ *
+ * A goalie's appearance-to-team mapping prefers game_rosters (who actually
+ * dressed); a game_stats row fills in a goalie who has a scoring line but
+ * wasn't checked in via roster.
+ */
+export function computeGoalieStats(
+  games: GoalieGameInput[],
+  gameRosters: GameRosterDbRow[],
+  gameStats: GameStatDbRow[],
+  players: GoaliePlayerInput[],
+  teams: GoalieTeamInput[],
+): GoalieStat[] {
+  const goalieIds = new Set(players.filter((p) => p.position === "G").map((p) => p.id));
+  const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
+  const playerNameById = new Map(players.map((p) => [p.id, p.name]));
+  const gameById = new Map(games.map((g) => [g.id, g]));
+
+  const teamByPlayerGame = new Map<string, string>(); // `${playerId}::${gameId}` -> teamId
+  for (const r of gameRosters) {
+    if (!goalieIds.has(r.player_id) || !gameById.has(r.game_id)) continue;
+    teamByPlayerGame.set(`${r.player_id}::${r.game_id}`, r.team_id);
+  }
+  for (const s of gameStats) {
+    if (!goalieIds.has(s.player_id) || !gameById.has(s.game_id)) continue;
+    const key = `${s.player_id}::${s.game_id}`;
+    if (!teamByPlayerGame.has(key)) teamByPlayerGame.set(key, s.team_id);
+  }
+
+  // Process appearances date-ascending so "team" (last write per player)
+  // lands on the most recent appearance — same rule as aggregateSkaterStats,
+  // so a goalie who's dressed for two teams this season doesn't get an
+  // arbitrary one.
+  const orderedAppearances = Array.from(teamByPlayerGame.entries())
+    .map(([key, teamId]) => {
+      const [playerId, gameId] = key.split("::");
+      return { playerId, gameId, teamId, date: gameById.get(gameId)!.date };
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  type Agg = {
+    gp: number;
+    wins: number;
+    losses: number;
+    ties: number;
+    goalsAgainst: number;
+    shutouts: number;
+    teamId: string;
+  };
+  const aggByPlayer = new Map<string, Agg>();
+
+  for (const { playerId, gameId, teamId } of orderedAppearances) {
+    const game = gameById.get(gameId)!;
+    const isHome = teamId === game.homeTeamId;
+    const isAway = teamId === game.awayTeamId;
+    if (!isHome && !isAway) continue; // dressed for a team not in this game — shouldn't happen, guard anyway
+    const teamScore = isHome ? game.homeScore : game.awayScore;
+    const oppScore = isHome ? game.awayScore : game.homeScore;
+
+    const existing = aggByPlayer.get(playerId) ?? {
+      gp: 0,
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      goalsAgainst: 0,
+      shutouts: 0,
+      teamId,
+    };
+    existing.gp += 1;
+    existing.goalsAgainst += oppScore;
+    if (oppScore === 0) existing.shutouts += 1;
+    if (teamScore > oppScore) existing.wins += 1;
+    else if (teamScore < oppScore) existing.losses += 1;
+    else existing.ties += 1;
+    existing.teamId = teamId;
+    aggByPlayer.set(playerId, existing);
+  }
+
+  const result: GoalieStat[] = Array.from(aggByPlayer.entries()).map(([playerId, agg]) => ({
+    playerId,
+    player: playerNameById.get(playerId) ?? "Unknown",
+    team: teamNameById.get(agg.teamId) ?? "Unknown",
+    gp: agg.gp,
+    wins: agg.wins,
+    losses: agg.losses,
+    ties: agg.ties,
+    goalsAgainst: agg.goalsAgainst,
+    gaa: agg.gp > 0 ? Number((agg.goalsAgainst / agg.gp).toFixed(2)) : 0,
+    shutouts: agg.shutouts,
+  }));
+
+  result.sort((a, b) => b.wins - a.wins || a.gaa - b.gaa);
   return result;
 }
 
@@ -207,9 +338,10 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
 
   const playerIds = Array.from(new Set([...gameStats.map((s) => s.player_id), ...gameRosters.map((r) => r.player_id)]));
   const playersRes = playerIds.length
-    ? await supabase.from("players").select("id,name").in("id", playerIds)
-    : { data: [] as { id: string; name: string }[] };
-  const playerNameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
+    ? await supabase.from("players").select("id,name,position").in("id", playerIds)
+    : { data: [] as { id: string; name: string; position: string | null }[] };
+  const players = playersRes.data ?? [];
+  const playerNameById = new Map(players.map((p) => [p.id, p.name]));
 
   // --- Standings: FINAL, regular-season games only. Playoff games never
   // touch the standings — they appear on game pages and /playoffs instead. ---
@@ -281,6 +413,19 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     }))
     .sort((a, b) => b.points - a.points || b.goals - a.goals);
 
+  // --- Goalies: same FINAL regular-season game set as skaters. ---
+  const finalGamesForGoalies: GoalieGameInput[] = games
+    .filter((g) => finalGameIds.has(g.id) && g.homeScore !== null && g.awayScore !== null)
+    .map((g) => ({
+      id: g.id,
+      date: g.date,
+      homeTeamId: g.homeTeamId,
+      awayTeamId: g.awayTeamId,
+      homeScore: g.homeScore as number,
+      awayScore: g.awayScore as number,
+    }));
+  const goalies = computeGoalieStats(finalGamesForGoalies, gameRosters, gameStats, players, teams);
+
   // --- Rosters via draft_picks, for teams in this season. ---
   const rosters: Record<string, LiveRosterPlayer[]> = {};
   for (const t of teams) rosters[t.name] = [];
@@ -308,6 +453,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     status: seasonRow.status as SeasonStatus,
     standings,
     skaters,
+    goalies,
     games,
     teams,
     rosters,

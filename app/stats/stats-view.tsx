@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { jsPDF as JsPDF } from "jspdf";
 
 import { getTeamColors, type SkaterStat, type TeamStanding } from "@/lib/league-data";
-import type { LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
+import { TeamLogo, teamLogo } from "@/lib/team-logos";
+import type { GoalieStat, LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
 
 type SortKey = "gamesPlayed" | "goals" | "assists" | "points" | "ppg";
 
@@ -14,6 +15,8 @@ export type StatsSeasonViewModel = {
   label: string;
   standings: TeamStanding[];
   skaters: SkaterStat[];
+  // Live/DB seasons only — static archive seasons never carry goalie data.
+  goalies?: GoalieStat[];
   teams?: LiveTeam[];
   rosters?: Record<string, LiveRosterPlayer[]>;
   hasFinalGames?: boolean;
@@ -53,6 +56,11 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
       subPlayers: sortPlayers(subs),
     };
   }, [season, sortKey]);
+
+  // Goalies never appear for static archive seasons (season.goalies is
+  // undefined there) — only live/DB seasons carry goalie data, and only once
+  // a goalie has actually dressed for a final game.
+  const goaliesWithGp = (season.goalies ?? []).filter((g) => g.gp > 0);
 
   const sortButtonClass = (key: SortKey) =>
     `font-semibold transition hover:text-neutral-800 ${sortKey === key ? "text-neutral-900 underline underline-offset-4" : ""}`;
@@ -173,6 +181,39 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
     });
     }
 
+    // Goalies — live seasons only (season.goalies is undefined for the
+    // static archive, which never tracked goalie stats).
+    if (goaliesWithGp.length > 0) {
+    autoTable(doc, {
+      startY: (doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
+        ? ((doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
+        : 40,
+      head: [["Goalies", "Team", "GP", "W", "L", "T", "GA", "GAA", "SO"]],
+      body: goaliesWithGp.map((goalie) => [
+        goalie.player,
+        goalie.team,
+        goalie.gp,
+        goalie.wins,
+        goalie.losses,
+        goalie.ties,
+        goalie.goalsAgainst,
+        goalie.gaa.toFixed(2),
+        goalie.shutouts,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [29, 29, 31] },
+      didParseCell: (data) => {
+        if (data.section !== "body" || data.column.index !== 1) return;
+        const teamName = String(data.cell.raw ?? "");
+        const colors = getTeamColors(teamName);
+        data.cell.styles.fillColor = hexToRgb(colors.background);
+        data.cell.styles.textColor = hexToRgb(colors.text);
+        data.cell.styles.lineColor = hexToRgb(colors.border);
+        data.cell.styles.lineWidth = 0.25;
+      },
+    });
+    }
+
     doc.save(`outlaw-player-stats-${season.id}.pdf`);
   };
 
@@ -277,7 +318,8 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
             <div className="divide-y divide-black/5">
               {season.standings.map((team) => (
                 <div key={team.team} className="grid grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
                     <span
                       className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
                       style={{
@@ -321,15 +363,18 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                 {season.standings.map((team) => (
                   <tr key={team.team} className="border-t border-black/5 text-neutral-700">
                     <td className="px-4 py-3 font-semibold text-neutral-900">
-                      <span
-                        className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                        style={{
-                          backgroundColor: getTeamColors(team.team).background,
-                          color: getTeamColors(team.team).text,
-                          borderColor: getTeamColors(team.team).border,
-                        }}
-                      >
-                        {team.team}
+                      <span className="flex items-center gap-1.5">
+                        {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
+                        <span
+                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                          style={{
+                            backgroundColor: getTeamColors(team.team).background,
+                            color: getTeamColors(team.team).text,
+                            borderColor: getTeamColors(team.team).border,
+                          }}
+                        >
+                          {team.team}
+                        </span>
                       </span>
                     </td>
                     <td className="px-4 py-3">{team.gp}</td>
@@ -560,6 +605,113 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
           </div>
           </>
           ) : null}
+
+          {goaliesWithGp.length > 0 ? (
+            <>
+              <div>
+                <h2 className="text-2xl font-semibold text-neutral-900">Goalies</h2>
+              </div>
+
+              <div className="glass-card overflow-hidden rounded-3xl md:hidden">
+                <div className="grid grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                  <p>Goalie</p>
+                  <p className="text-center">GP</p>
+                  <p className="text-center">W</p>
+                  <p className="text-center">L</p>
+                  <p className="text-center">GA</p>
+                  <p className="text-center">GAA</p>
+                  <p className="text-center">SO</p>
+                </div>
+                <div className="divide-y divide-black/5">
+                  {goaliesWithGp.map((goalie) => (
+                    <div
+                      key={goalie.playerId}
+                      className="grid grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-neutral-900">
+                          <Link href={`/players/${goalie.playerId}`} className="transition hover:underline hover:underline-offset-4">
+                            {goalie.player}
+                          </Link>
+                        </p>
+                        <span className="mt-1 flex max-w-full items-center gap-1.5">
+                          {teamLogo(goalie.team) ? <TeamLogo name={goalie.team} size={22} /> : null}
+                          <span
+                            className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                            style={{
+                              backgroundColor: getTeamColors(goalie.team).background,
+                              color: getTeamColors(goalie.team).text,
+                              borderColor: getTeamColors(goalie.team).border,
+                            }}
+                          >
+                            <span className="truncate">{goalie.team}</span>
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-center">{goalie.gp}</p>
+                      <p className="text-center">{goalie.wins}</p>
+                      <p className="text-center">{goalie.losses}</p>
+                      <p className="text-center">{goalie.goalsAgainst}</p>
+                      <p className="text-center font-semibold text-neutral-900">{goalie.gaa.toFixed(2)}</p>
+                      <p className="text-center">{goalie.shutouts}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="glass-card hidden overflow-x-auto rounded-3xl md:block">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
+                    <tr>
+                      <th className="px-4 py-3">Goalie</th>
+                      <th className="px-4 py-3">Team</th>
+                      <th className="px-4 py-3">GP</th>
+                      <th className="px-4 py-3">W</th>
+                      <th className="px-4 py-3">L</th>
+                      <th className="px-4 py-3">T</th>
+                      <th className="px-4 py-3">GA</th>
+                      <th className="px-4 py-3">GAA</th>
+                      <th className="px-4 py-3">SO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {goaliesWithGp.map((goalie) => (
+                      <tr key={goalie.playerId} className="border-t border-black/5 text-neutral-700">
+                        <td className="px-4 py-3 font-semibold text-neutral-900">
+                          <Link href={`/players/${goalie.playerId}`} className="transition hover:underline hover:underline-offset-4">
+                            {goalie.player}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-1.5">
+                            {teamLogo(goalie.team) ? <TeamLogo name={goalie.team} size={22} /> : null}
+                            <span
+                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                              style={{
+                                backgroundColor: getTeamColors(goalie.team).background,
+                                color: getTeamColors(goalie.team).text,
+                                borderColor: getTeamColors(goalie.team).border,
+                              }}
+                            >
+                              {goalie.team}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">{goalie.gp}</td>
+                        <td className="px-4 py-3">{goalie.wins}</td>
+                        <td className="px-4 py-3">{goalie.losses}</td>
+                        <td className="px-4 py-3">{goalie.ties}</td>
+                        <td className="px-4 py-3">{goalie.goalsAgainst}</td>
+                        <td className="px-4 py-3 font-semibold text-neutral-900">{goalie.gaa.toFixed(2)}</td>
+                        <td className="px-4 py-3">{goalie.shutouts}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+
           <p className="text-xs text-neutral-500">Tip: click GP, Goals, Assists, PTS, or PTS/GP to sort players.</p>
         </>
       )}
