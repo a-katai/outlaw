@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { buildDraftGrid, draftOrderOnClock, goalieCountsByTeam, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import { getTeamColors } from "@/lib/league-data";
 import { TeamLogo, teamLogo } from "@/lib/team-logos";
-import type { Draft, DraftPick, Team } from "@/lib/draft-types";
+import type { Draft, DraftPick, PlayerPosition, Team } from "@/lib/draft-types";
 import {
   FormatBadge,
   PausedBadge,
@@ -26,7 +26,8 @@ const STALE_CONNECTION_MS = 20000;
 
 // Matches app/globals.css `body` background exactly — TV mode is a fixed
 // takeover that must fully hide the site nav/footer behind an opaque bg.
-const TV_BACKGROUND_STYLE = {
+// Exported so /draft/lottery (another full-viewport takeover) matches it.
+export const TV_BACKGROUND_STYLE = {
   background:
     "radial-gradient(1200px 500px at 10% -10%, rgba(0, 113, 227, 0.12), transparent 60%), " +
     "radial-gradient(900px 420px at 100% 0%, rgba(245, 99, 58, 0.1), transparent 60%), " +
@@ -64,6 +65,7 @@ function DraftBoardInner() {
 
   const playerNameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
   const positionById = useMemo(() => new Map(players.map((p) => [p.id, p.position])), [players]);
+  const rankById = useMemo(() => new Map(players.map((p) => [p.id, p.rank])), [players]);
   const goalieCounts = useMemo(() => goalieCountsByTeam(picks, positionById), [picks, positionById]);
   const pickByNumber = useMemo(() => new Map(picks.map((p) => [p.pick_number, p])), [picks]);
   const teamByDraftOrder = useMemo(() => new Map(orderedTeams.map((t) => [t.draft_order as number, t])), [orderedTeams]);
@@ -150,6 +152,9 @@ function DraftBoardInner() {
           pickByNumber={pickByNumber}
           playerNameById={playerNameById}
           teamColorsById={teamColorsById}
+          picks={picks}
+          playerPositionById={positionById}
+          playerRankById={rankById}
           complete
           stale={stale}
           connectionStale={connectionStale}
@@ -204,6 +209,9 @@ function DraftBoardInner() {
         pickByNumber={pickByNumber}
         playerNameById={playerNameById}
         teamColorsById={teamColorsById}
+        picks={picks}
+        playerPositionById={positionById}
+        playerRankById={rankById}
         currentRound={currentRound}
         onClockTeam={onClockTeam}
         lastPick={lastPick}
@@ -390,6 +398,11 @@ type TeamColors = ReturnType<typeof getTeamColors>;
  * 1920x1080) plus a big "on the clock" header. Shares grid/pick data with
  * the normal board so the two never drift apart.
  */
+/** Milliseconds the full-screen new-pick overlay stays up before fading out. */
+const PICK_FLASH_MS = 5000;
+/** Must match the overlay's `duration-*` class below — the fade-out window inside PICK_FLASH_MS. */
+const PICK_FLASH_TRANSITION_MS = 250;
+
 function TvBoard({
   draft,
   orderedTeams,
@@ -398,6 +411,9 @@ function TvBoard({
   pickByNumber,
   playerNameById,
   teamColorsById,
+  picks,
+  playerPositionById,
+  playerRankById,
   currentRound,
   onClockTeam,
   lastPick,
@@ -412,6 +428,9 @@ function TvBoard({
   pickByNumber: Map<number, DraftPick>;
   playerNameById: Map<string, string>;
   teamColorsById: Map<string, TeamColors>;
+  picks: DraftPick[];
+  playerPositionById: Map<string, PlayerPosition | null>;
+  playerRankById: Map<string, number | null>;
   currentRound?: number;
   onClockTeam?: Team;
   lastPick?: { player: string; team: string } | null;
@@ -421,6 +440,47 @@ function TvBoard({
 }) {
   const teamCount = orderedTeams.length;
   const onClockColors = onClockTeam ? teamColorsById.get(onClockTeam.id) : undefined;
+
+  // New-pick flash: only while TV mode is showing a *live* draft. Tracks the
+  // previous picks.length so an increase (a new pick landed) triggers a
+  // full-screen overlay for PICK_FLASH_MS, then fades it out. A decrease
+  // (undo) must never flash — it just quietly rebases the tracked length. A
+  // second pick arriving mid-flash replaces the shown pick and resets the
+  // timers (clearing the old ones first).
+  const prevPicksLengthRef = useRef(picks.length);
+  const flashRafRef = useRef<number | null>(null);
+  const flashHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flashPick, setFlashPick] = useState<DraftPick | null>(null);
+  const [flashShown, setFlashShown] = useState(false);
+
+  useEffect(() => {
+    const prevLength = prevPicksLengthRef.current;
+    if (picks.length > prevLength && draft.status === "live") {
+      const newestPick = [...picks].sort((a, b) => b.pick_number - a.pick_number)[0];
+      if (flashRafRef.current !== null) cancelAnimationFrame(flashRafRef.current);
+      if (flashHideTimeoutRef.current) clearTimeout(flashHideTimeoutRef.current);
+      if (flashClearTimeoutRef.current) clearTimeout(flashClearTimeoutRef.current);
+      setFlashPick(newestPick);
+      setFlashShown(false);
+      flashRafRef.current = requestAnimationFrame(() => setFlashShown(true));
+      flashHideTimeoutRef.current = setTimeout(() => setFlashShown(false), PICK_FLASH_MS - PICK_FLASH_TRANSITION_MS);
+      flashClearTimeoutRef.current = setTimeout(() => setFlashPick(null), PICK_FLASH_MS);
+    }
+    prevPicksLengthRef.current = picks.length;
+  }, [picks, draft.status]);
+
+  // Clean up any in-flight timers/rAF on unmount (e.g. leaving TV mode mid-flash).
+  useEffect(() => {
+    return () => {
+      if (flashRafRef.current !== null) cancelAnimationFrame(flashRafRef.current);
+      if (flashHideTimeoutRef.current) clearTimeout(flashHideTimeoutRef.current);
+      if (flashClearTimeoutRef.current) clearTimeout(flashClearTimeoutRef.current);
+    };
+  }, []);
+
+  const flashTeam = flashPick ? orderedTeams.find((t) => t.id === flashPick.team_id) : undefined;
+  const flashColors = flashTeam ? teamColorsById.get(flashTeam.id) : undefined;
 
   const cells: React.ReactNode[] = [];
   cells.push(
@@ -530,6 +590,80 @@ function TvBoard({
         >
           {cells}
         </div>
+      </div>
+
+      {flashPick ? (
+        <TvPickFlash
+          pick={flashPick}
+          team={flashTeam}
+          colors={flashColors}
+          playerName={playerNameById.get(flashPick.player_id) ?? "—"}
+          position={playerPositionById.get(flashPick.player_id) ?? null}
+          rank={playerRankById.get(flashPick.player_id) ?? null}
+          shown={flashShown}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Full-screen "new pick just landed" overlay for TV mode. Mounted only while
+ * TvBoard holds a flashPick; the `shown` prop drives a subtle opacity/scale
+ * transition in (on mount) and out (right before unmount) — see the
+ * PICK_FLASH_MS / PICK_FLASH_TRANSITION_MS timers in TvBoard.
+ */
+function TvPickFlash({
+  pick,
+  team,
+  colors,
+  playerName,
+  position,
+  rank,
+  shown,
+}: {
+  pick: DraftPick;
+  team: Team | undefined;
+  colors: TeamColors | undefined;
+  playerName: string;
+  position: PlayerPosition | null;
+  rank: number | null;
+  shown: boolean;
+}) {
+  const hasLogo = team ? Boolean(teamLogo(team.name)) : false;
+  const accent = colors?.border ?? "#111827";
+
+  return (
+    <div
+      className={`fixed inset-0 z-[70] flex flex-col items-center justify-center gap-7 px-8 text-center transition-all duration-[250ms] ease-out ${
+        shown ? "scale-100 opacity-100" : "scale-95 opacity-0"
+      }`}
+      style={TV_BACKGROUND_STYLE}
+    >
+      <div className="flex items-center justify-center rounded-full p-4" style={{ boxShadow: `0 0 0 6px #ffffff, 0 0 0 9px ${accent}33` }}>
+        {hasLogo && team ? (
+          <TeamLogo name={team.name} size={280} />
+        ) : (
+          <span className="flex h-64 w-64 items-center justify-center rounded-full text-4xl font-bold text-white" style={{ backgroundColor: accent }}>
+            {team?.name?.[0] ?? "?"}
+          </span>
+        )}
+      </div>
+      <p className="text-xl font-semibold uppercase tracking-[0.35em] text-neutral-500">Pick #{pick.pick_number}</p>
+      <h1 className="max-w-6xl text-5xl font-semibold leading-tight text-neutral-900 md:text-7xl">
+        {team?.name ?? "—"} select <span style={{ color: accent }}>{playerName}</span>
+      </h1>
+      <div className="flex items-center gap-3">
+        {position ? (
+          <span className="inline-flex items-center rounded-full border border-black/10 bg-white px-4 py-1.5 text-base font-semibold text-neutral-600">
+            {position}
+          </span>
+        ) : null}
+        {rank ? (
+          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-base font-semibold text-blue-700">
+            Rank {rank}
+          </span>
+        ) : null}
       </div>
     </div>
   );

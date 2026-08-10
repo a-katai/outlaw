@@ -48,6 +48,20 @@ export function matchGameFilm(
 }
 
 /**
+ * Matches league YouTube videos whose title or matchup mentions a team by
+ * name (case-insensitive substring, trailing "s" optional — same rule as
+ * matchGameFilm's team check). Pure function — no I/O.
+ */
+export function matchTeamFilm(videos: VideoItem[], teamName: string): VideoItem[] {
+  const needles = nameVariants(teamName).map((n) => n.toLowerCase());
+  if (needles.length === 0) return [];
+  return videos.filter((video) => {
+    const haystack = `${video.title} ${video.matchup}`.toLowerCase();
+    return needles.some((needle) => haystack.includes(needle));
+  });
+}
+
+/**
  * Matches league YouTube videos whose title mentions a player by full name
  * (case-insensitive substring). Pass both the site name and, if the player
  * has an archive alias, that alias — some older clips use the archive

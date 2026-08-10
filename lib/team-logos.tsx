@@ -19,6 +19,35 @@ export function teamLogo(name: string | null | undefined): string | null {
   return TEAM_LOGOS[name.trim().toLowerCase()] ?? null;
 }
 
+// Canonical display name by /teams/[slug] route slug — the same five teams
+// that have logo assets on file. Order here is the display order used by the
+// /teams index and the video team-filter chips.
+const TEAM_NAMES_BY_SLUG: Record<string, string> = {
+  "wednesday-knights": "Wednesday Knights",
+  "toe-dragons": "Toe Dragons",
+  "ghost-pirates": "Ghost Pirates",
+  "tank-fillers": "Tank Fillers",
+  trashers: "Trashers",
+};
+
+/** Ordered list of every routable team slug — the fixed five, display order. */
+export const TEAM_SLUG_LIST: string[] = Object.keys(TEAM_NAMES_BY_SLUG);
+
+/** Route slug for a team name, or null when the team has no team page (e.g. "Sub", "Krushers"). */
+export function teamSlug(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const trimmed = name.trim().toLowerCase();
+  for (const [slug, canonicalName] of Object.entries(TEAM_NAMES_BY_SLUG)) {
+    if (canonicalName.toLowerCase() === trimmed) return slug;
+  }
+  return null;
+}
+
+/** Canonical team name for a /teams/[slug] route slug, or null when the slug isn't one of the five teams. */
+export function teamNameFromSlug(slug: string): string | null {
+  return TEAM_NAMES_BY_SLUG[slug] ?? null;
+}
+
 /**
  * Fixed square box, logo centered with object-contain (the source PNGs are
  * non-square). Renders nothing when the team has no logo — callers decide

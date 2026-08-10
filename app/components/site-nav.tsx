@@ -11,6 +11,7 @@ const menuLinks = [
   { href: "/schedule", label: "Schedule" },
   { href: "/stats", label: "Stats" },
   { href: "/players", label: "Players" },
+  { href: "/teams", label: "Teams" },
   { href: "/playoffs", label: "Playoffs" },
   { href: "/draft", label: "Draft" },
   { href: "/videos", label: "Videos" },

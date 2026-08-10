@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { PlayoffBracket, PlayoffSeriesView } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
-import { TeamLogo, teamLogo } from "@/lib/team-logos";
+import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 
 // --- Shared helpers ---------------------------------------------------
 
@@ -76,6 +76,20 @@ function SlotRow({
 
   const colors = getTeamColors(name);
   const dimmed = isDecided && !isWinner;
+  const slug = teamSlug(name);
+
+  const badge = (
+    <>
+      {fixedSeedNumber ? <span className="text-[10px] font-medium text-neutral-400">{fixedSeedNumber}</span> : null}
+      {teamLogo(name) ? <TeamLogo name={name} size={24} /> : null}
+      <span
+        className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+        style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+      >
+        {name}
+      </span>
+    </>
+  );
 
   return (
     <div
@@ -83,16 +97,13 @@ function SlotRow({
         isWinner ? "bg-amber-50" : ""
       } ${dimmed ? "opacity-50" : ""}`}
     >
-      <span className="flex items-center gap-1.5">
-        {fixedSeedNumber ? <span className="text-[10px] font-medium text-neutral-400">{fixedSeedNumber}</span> : null}
-        {teamLogo(name) ? <TeamLogo name={name} size={24} /> : null}
-        <span
-          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-          style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
-        >
-          {name}
-        </span>
-      </span>
+      {slug ? (
+        <Link href={`/teams/${slug}`} className="flex items-center gap-1.5 transition hover:opacity-80">
+          {badge}
+        </Link>
+      ) : (
+        <span className="flex items-center gap-1.5">{badge}</span>
+      )}
       {wins !== null ? (
         <span className={`text-sm font-semibold tabular-nums ${isWinner ? "text-amber-700" : "text-neutral-500"}`}>{wins}</span>
       ) : null}

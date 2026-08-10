@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { jsPDF as JsPDF } from "jspdf";
 
 import { getTeamColors, type SkaterStat, type TeamStanding } from "@/lib/league-data";
-import { TeamLogo, teamLogo } from "@/lib/team-logos";
+import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import type { GoalieStat, LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
 
 type SortKey = "gamesPlayed" | "goals" | "assists" | "points" | "ppg";
@@ -29,6 +29,18 @@ function PlayerNameLink({ player }: { player: { player: string; playerId?: strin
   return (
     <Link href={`/players/${player.playerId}`} className="transition hover:underline hover:underline-offset-4">
       {player.player}
+    </Link>
+  );
+}
+
+// Links a standings-row team badge to its team page when one exists — the
+// standings table previously linked nowhere per-team.
+function StandingsTeamLink({ name, children }: { name: string; children: React.ReactNode }) {
+  const slug = teamSlug(name);
+  if (!slug) return <>{children}</>;
+  return (
+    <Link href={`/teams/${slug}`} className="transition hover:opacity-80">
+      {children}
     </Link>
   );
 }
@@ -318,19 +330,21 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
             <div className="divide-y divide-black/5">
               {season.standings.map((team) => (
                 <div key={team.team} className="grid grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
-                    <span
-                      className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
-                      style={{
-                        backgroundColor: getTeamColors(team.team).background,
-                        color: getTeamColors(team.team).text,
-                        borderColor: getTeamColors(team.team).border,
-                      }}
-                    >
-                      <span className="truncate">{team.team}</span>
-                    </span>
-                  </div>
+                  <StandingsTeamLink name={team.team}>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
+                      <span
+                        className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: getTeamColors(team.team).background,
+                          color: getTeamColors(team.team).text,
+                          borderColor: getTeamColors(team.team).border,
+                        }}
+                      >
+                        <span className="truncate">{team.team}</span>
+                      </span>
+                    </div>
+                  </StandingsTeamLink>
                   <p className="text-center">{team.gp}</p>
                   <p className="text-center">{team.wins}</p>
                   <p className="text-center">{team.losses}</p>
@@ -363,19 +377,21 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                 {season.standings.map((team) => (
                   <tr key={team.team} className="border-t border-black/5 text-neutral-700">
                     <td className="px-4 py-3 font-semibold text-neutral-900">
-                      <span className="flex items-center gap-1.5">
-                        {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
-                        <span
-                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                          style={{
-                            backgroundColor: getTeamColors(team.team).background,
-                            color: getTeamColors(team.team).text,
-                            borderColor: getTeamColors(team.team).border,
-                          }}
-                        >
-                          {team.team}
+                      <StandingsTeamLink name={team.team}>
+                        <span className="flex items-center gap-1.5">
+                          {teamLogo(team.team) ? <TeamLogo name={team.team} size={22} /> : null}
+                          <span
+                            className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                            style={{
+                              backgroundColor: getTeamColors(team.team).background,
+                              color: getTeamColors(team.team).text,
+                              borderColor: getTeamColors(team.team).border,
+                            }}
+                          >
+                            {team.team}
+                          </span>
                         </span>
-                      </span>
+                      </StandingsTeamLink>
                     </td>
                     <td className="px-4 py-3">{team.gp}</td>
                     <td className="px-4 py-3">{team.wins}</td>

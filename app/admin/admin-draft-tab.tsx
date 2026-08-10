@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { draftOrderOnClock, roundAndSlot, sortByRankThenName } from "@/lib/draft-logic";
 import type { DraftFormat, PlayerPosition } from "@/lib/draft-types";
@@ -63,6 +64,12 @@ function DraftNightRunbook() {
           </li>
         ))}
       </ol>
+      <p className="mt-3 text-xs text-neutral-400">
+        Optional: lottery reveal for the TV →{" "}
+        <Link href="/draft/lottery" className="underline underline-offset-4 transition hover:text-neutral-700">
+          /draft/lottery
+        </Link>
+      </p>
     </details>
   );
 }
