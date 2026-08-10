@@ -6,6 +6,7 @@ import { getTeamColors } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { matchGameFilm } from "@/lib/game-film";
 import { LiveGameFeed } from "./live-game-feed";
+import { ShareScoreButton } from "./share-score-button";
 import type { VideoItem } from "@/app/components/video-gallery";
 import videosData from "@/videos-data.json";
 
@@ -207,6 +208,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
           <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Final</p>
+          <div className="mt-5 flex justify-center">
+            <ShareScoreButton gameId={game.id} awayTeam={game.awayTeam} homeTeam={game.homeTeam} />
+          </div>
         </div>
       ) : isLive ? (
         <LiveGameFeed
