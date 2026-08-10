@@ -54,3 +54,31 @@
     0 6px 14px rgba(0, 0, 0, 0.08),
     0 20px 36px rgba(0, 0, 0, 0.08);
 }
+
+/* Jersey-nameplate display type: condensed, heavy, uppercase. */
+.nameplate {
+  font-family: var(--font-nameplate), var(--font-geist-sans), sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* One orchestrated load moment for the home hero; nothing else animates. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-rise {
+    animation: hero-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero-rise-late {
+    animation: hero-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+  }
+  @keyframes hero-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
