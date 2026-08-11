@@ -87,7 +87,8 @@ function DraftControlCard({
 }) {
   const [name, setName] = useState("Draft");
   const [format, setFormat] = useState<DraftFormat>("snake");
-  const [totalRounds, setTotalRounds] = useState(10);
+  // 12 rounds x 5 teams = the league's real fall format (11 skaters + a goalie).
+  const [totalRounds, setTotalRounds] = useState(12);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);

@@ -2,6 +2,7 @@
 
 import { Fragment, FormEvent, useMemo, useState } from "react";
 import type { Payment, PaymentMethod, Player } from "@/lib/draft-types";
+import { confidenceLabel, suggestPlayers } from "@/lib/name-match";
 import { AdminState, formatCents, postJSON } from "./admin-api";
 
 const METHODS: PaymentMethod[] = ["cash", "venmo", "zelle", "card", "check", "other"];
@@ -112,8 +113,11 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [duesSearch, setDuesSearch] = useState("");
+  const [linkSelections, setLinkSelections] = useState<Record<string, string>>({});
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
 
   const nameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players]);
+  const sortedPlayers = useMemo(() => [...players].sort((a, b) => a.name.localeCompare(b.name)), [players]);
 
   const totalCents = payments.reduce((sum, p) => sum + p.amount_cents, 0);
 
@@ -177,6 +181,37 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
   const deletePayment = async (id: string) => {
     await postJSON("/api/admin/payments", { action: "delete", id });
     setConfirmDeleteId(null);
+    await refetch();
+  };
+
+  const linkPayment = async (paymentId: string, playerId: string) => {
+    if (!playerId) return setError("Choose a player to link");
+    setLinkBusyId(paymentId);
+    setError(null);
+    const data = await postJSON<{ ok: boolean; error?: string }>("/api/admin/payments", {
+      action: "link",
+      paymentId,
+      playerId,
+    });
+    setLinkBusyId(null);
+    if (!data.ok) return setError(data.error ?? "Couldn't link payment");
+    setLinkSelections((prev) => {
+      const next = { ...prev };
+      delete next[paymentId];
+      return next;
+    });
+    await refetch();
+  };
+
+  const unlinkPayment = async (paymentId: string) => {
+    setLinkBusyId(paymentId);
+    setError(null);
+    const data = await postJSON<{ ok: boolean; error?: string }>("/api/admin/payments", {
+      action: "unlink",
+      paymentId,
+    });
+    setLinkBusyId(null);
+    if (!data.ok) return setError(data.error ?? "Couldn't unlink payment");
     await refetch();
   };
 
@@ -488,13 +523,25 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(p.id)}
-                          className="text-xs font-medium text-neutral-500 hover:text-rose-600"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex justify-end gap-3">
+                          {p.player_id ? (
+                            <button
+                              type="button"
+                              disabled={linkBusyId === p.id}
+                              onClick={() => unlinkPayment(p.id)}
+                              className="text-xs font-medium text-neutral-500 hover:text-neutral-800 disabled:opacity-50"
+                            >
+                              {linkBusyId === p.id ? "Unlinking…" : "Unlink"}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(p.id)}
+                            className="text-xs font-medium text-neutral-500 hover:text-rose-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -510,7 +557,7 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
           <h2 className="text-xl font-semibold text-neutral-900">Unmatched payments</h2>
           <p className="mt-1 text-sm text-neutral-500">Free-text payers not tied to a roster player.</p>
           <div className="glass-card mt-4 overflow-x-auto rounded-3xl">
-            <table className="w-full min-w-[560px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
                 <tr>
                   <th className="px-4 py-3">Date</th>
@@ -518,18 +565,68 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
                   <th className="px-4 py-3">Amount</th>
                   <th className="px-4 py-3">Method</th>
                   <th className="px-4 py-3">Note</th>
+                  <th className="px-4 py-3">Link to player</th>
                 </tr>
               </thead>
               <tbody>
-                {unmatchedPayments.map((p) => (
-                  <tr key={p.id} className="border-t border-black/5 text-neutral-700">
-                    <td className="px-4 py-3">{p.paid_on}</td>
-                    <td className="px-4 py-3 font-medium text-neutral-900">{p.payer_name ?? "Unknown"}</td>
-                    <td className="px-4 py-3 font-semibold text-neutral-900">{formatCents(p.amount_cents)}</td>
-                    <td className="px-4 py-3 capitalize">{p.method}</td>
-                    <td className="px-4 py-3 text-neutral-500">{p.note ?? "—"}</td>
-                  </tr>
-                ))}
+                {unmatchedPayments.map((p) => {
+                  const suggestions = suggestPlayers(p.payer_name ?? "", players, 5);
+                  const suggestedIds = new Set(suggestions.map((s) => s.player.id));
+                  const rest = sortedPlayers.filter((pl) => !suggestedIds.has(pl.id));
+                  // Only pre-fill a confident match. A merely "possible" guess has
+                  // to be chosen deliberately — this binds real money to a player.
+                  const top = suggestions[0];
+                  const presumed = top && top.score >= 0.75 ? top.player.id : "";
+                  const selected = linkSelections[p.id] ?? presumed;
+                  return (
+                    <tr key={p.id} className="border-t border-black/5 text-neutral-700">
+                      <td className="px-4 py-3">{p.paid_on}</td>
+                      <td className="px-4 py-3 font-medium text-neutral-900">{p.payer_name ?? "Unknown"}</td>
+                      <td className="px-4 py-3 font-semibold text-neutral-900">{formatCents(p.amount_cents)}</td>
+                      <td className="px-4 py-3 capitalize">{p.method}</td>
+                      <td className="px-4 py-3 text-neutral-500">{p.note ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="rounded-xl border border-black/10 bg-white px-2.5 py-2 text-xs outline-none ring-blue-500/30 transition focus:ring-4"
+                            value={selected}
+                            onChange={(e) => setLinkSelections((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          >
+                            <option value="">— Select player —</option>
+                            {suggestions.length > 0 ? (
+                              <optgroup label="Suggested">
+                                {suggestions.map((s) => {
+                                  const label = confidenceLabel(s.score);
+                                  return (
+                                    <option key={s.player.id} value={s.player.id}>
+                                      {s.player.name}
+                                      {label ? ` — ${label}` : ""}
+                                    </option>
+                                  );
+                                })}
+                              </optgroup>
+                            ) : null}
+                            <optgroup label="All players">
+                              {rest.map((pl) => (
+                                <option key={pl.id} value={pl.id}>
+                                  {pl.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          <button
+                            type="button"
+                            disabled={!selected || linkBusyId === p.id}
+                            onClick={() => linkPayment(p.id, selected)}
+                            className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                          >
+                            {linkBusyId === p.id ? "Linking…" : "Link"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
