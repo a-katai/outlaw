@@ -93,6 +93,8 @@ function DraftControlCard({
   const [error, setError] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [endConfirm, setEndConfirm] = useState(false);
+  const [reopenConfirm, setReopenConfirm] = useState(false);
   const [forcePickId, setForcePickId] = useState<string | null>(null);
   const [forceSearch, setForceSearch] = useState("");
   const [undoToPickInput, setUndoToPickInput] = useState("");
@@ -130,9 +132,45 @@ function DraftControlCard({
           {draft ? "Start a new draft" : "Create a draft"}
         </h2>
         {draft ? (
-          <p className="mt-1 text-sm text-neutral-500">
-            &ldquo;{draft.name}&rdquo; is complete. Starting a new one replaces it as the live draft.
-          </p>
+          <>
+            <p className="mt-1 text-sm text-neutral-500">
+              &ldquo;{draft.name}&rdquo; is complete. Starting a new one replaces it as the live draft.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {reopenConfirm ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      await act({ action: "reopen", draftId: draft.id, confirm: true });
+                      setReopenConfirm(false);
+                    }}
+                    className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                  >
+                    Confirm — reopen paused
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReopenConfirm(false)}
+                    className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setReopenConfirm(true)}
+                  className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Ended it early? Reopen
+                </button>
+              )}
+            </div>
+            {error ? <p className="mt-3 text-sm font-medium text-rose-600">{error}</p> : null}
+          </>
         ) : null}
         <form onSubmit={createDraft} className="mt-5 grid gap-4 sm:grid-cols-3">
           <label className="grid gap-1.5 text-sm sm:col-span-1">
@@ -237,6 +275,39 @@ function DraftControlCard({
             >
               Undo last pick
             </button>
+          ) : null}
+          {draft.status === "live" || draft.status === "paused" ? (
+            endConfirm ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    await act({ action: "complete", draftId: draft.id, confirm: true });
+                    setEndConfirm(false);
+                  }}
+                  className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                >
+                  Confirm — end the draft here
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEndConfirm(false)}
+                  className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setEndConfirm(true)}
+                className="rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+              >
+                End draft
+              </button>
+            )
           ) : null}
           {resetConfirm ? (
             <>

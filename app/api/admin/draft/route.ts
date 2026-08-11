@@ -9,6 +9,8 @@ type Body =
   | { action: "start"; draftId: string }
   | { action: "pause"; draftId: string }
   | { action: "resume"; draftId: string }
+  | { action: "complete"; draftId: string; confirm?: boolean }
+  | { action: "reopen"; draftId: string; confirm?: boolean }
   | { action: "undo"; draftId: string }
   | { action: "undo-to-pick"; draftId: string; targetPick: number; confirm?: boolean }
   | { action: "reset"; draftId: string; confirm?: boolean }
@@ -104,6 +106,60 @@ export async function POST(req: NextRequest) {
         .select("*")
         .single();
       if (error || !data) return NextResponse.json({ ok: false, error: "Draft is not paused" }, { status: 400 });
+      return NextResponse.json({ ok: true, draft: data });
+    }
+
+    // End the draft by hand. make_pick only flips status to 'complete' when a
+    // pick is actually made, so a draft whose pool runs dry before the last
+    // slot (59 players into 60 picks) would otherwise sit on the clock forever
+    // — never completing, never releasing the season-phase pill.
+    case "complete": {
+      if (body.confirm !== true) {
+        return NextResponse.json({ ok: false, error: "Ending the draft requires confirmation" }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("drafts")
+        .update({ status: "complete" })
+        .eq("id", body.draftId)
+        .in("status", ["live", "paused"])
+        .select("*")
+        .single();
+      if (error || !data) {
+        return NextResponse.json({ ok: false, error: "Only a live or paused draft can be ended" }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, draft: data });
+    }
+
+    // Undo an early/accidental end. Comes back paused, never straight to live,
+    // so picking can't resume until the commissioner deliberately resumes.
+    case "reopen": {
+      if (body.confirm !== true) {
+        return NextResponse.json({ ok: false, error: "Reopening the draft requires confirmation" }, { status: 400 });
+      }
+      // Same shadow-draft guard as create: if a newer draft was started after
+      // this one ended, reopening would put two non-complete drafts in play.
+      const { data: openDrafts, error: openError } = await supabase
+        .from("drafts")
+        .select("id")
+        .in("status", ["setup", "live", "paused"])
+        .limit(1);
+      if (openError) return NextResponse.json({ ok: false, error: openError.message }, { status: 500 });
+      if (openDrafts && openDrafts.length > 0) {
+        return NextResponse.json(
+          { ok: false, error: "Another draft is already open — complete or delete it first." },
+          { status: 400 },
+        );
+      }
+      const { data, error } = await supabase
+        .from("drafts")
+        .update({ status: "paused" })
+        .eq("id", body.draftId)
+        .eq("status", "complete")
+        .select("*")
+        .single();
+      if (error || !data) {
+        return NextResponse.json({ ok: false, error: "Draft is not complete" }, { status: 400 });
+      }
       return NextResponse.json({ ok: true, draft: data });
     }
 

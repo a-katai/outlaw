@@ -77,6 +77,12 @@ Set in `.env.local` (never commit this file):
 7. **Undo** rolls back the most recent pick and re-opens that slot. **Reset**
    wipes all picks and returns the draft to setup (double-confirm; use
    sparingly).
+8. **End draft** closes the draft by hand. The draft only completes itself when
+   the final pick is actually made, so if the pool runs dry first — 59 players
+   into 60 slots — it would otherwise sit on the clock forever and the site's
+   season-phase pill would never move off "Draft". Ended too early? The create
+   screen offers **Reopen**, which brings it back *paused* so nobody can pick
+   until you resume.
 
 ## Payments ledger
 
