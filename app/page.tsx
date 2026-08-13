@@ -9,49 +9,38 @@ const LOGO = "/ohl_logo_2.png";
 
 export const dynamic = "force-dynamic";
 
-/** One matchup on the night: nameplates flanking the "at", time and rink below. */
-function MatchupRow({ game }: { game: LiveGame }) {
-  const { time, rink } = splitTimeRink(game.time);
-  const away = { name: game.awayTeam, colors: getTeamColors(game.awayTeam) };
-  const home = { name: game.homeTeam, colors: getTeamColors(game.homeTeam) };
-
+/** One side of a matchup — logo over a colour-underlined nameplate. */
+function MatchupSide({ name }: { name: string }) {
+  const colors = getTeamColors(name);
   return (
-    <Link href={`/games/${game.id}`} className="group block py-6 text-center md:py-7">
-      <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12">
-        <div className="flex w-32 flex-col items-center gap-2.5 sm:w-36 md:w-44">
-          {teamLogo(away.name) ? (
-            <>
-              <div className="md:hidden"><TeamLogo name={away.name} size={56} /></div>
-              <div className="hidden md:block"><TeamLogo name={away.name} size={76} /></div>
-            </>
-          ) : null}
-          <p
-            className="nameplate text-base leading-none text-neutral-900 sm:text-xl md:text-2xl"
-            style={{ borderBottom: `3px solid ${away.colors.border}`, paddingBottom: "0.35rem" }}
-          >
-            {away.name}
-          </p>
-        </div>
+    <div className="flex w-24 flex-col items-center gap-2 sm:w-28 md:w-32">
+      {teamLogo(name) ? (
+        <>
+          <div className="md:hidden"><TeamLogo name={name} size={40} /></div>
+          <div className="hidden md:block"><TeamLogo name={name} size={52} /></div>
+        </>
+      ) : null}
+      <p
+        className="nameplate text-xs leading-none text-neutral-900 sm:text-sm md:text-base"
+        style={{ borderBottom: `2px solid ${colors.border}`, paddingBottom: "0.3rem" }}
+      >
+        {name}
+      </p>
+    </div>
+  );
+}
 
-        <span className="nameplate self-center pb-6 text-base text-neutral-300 md:text-lg">at</span>
-
-        <div className="flex w-32 flex-col items-center gap-2.5 sm:w-36 md:w-44">
-          {teamLogo(home.name) ? (
-            <>
-              <div className="md:hidden"><TeamLogo name={home.name} size={56} /></div>
-              <div className="hidden md:block"><TeamLogo name={home.name} size={76} /></div>
-            </>
-          ) : null}
-          <p
-            className="nameplate text-base leading-none text-neutral-900 sm:text-xl md:text-2xl"
-            style={{ borderBottom: `3px solid ${home.colors.border}`, paddingBottom: "0.35rem" }}
-          >
-            {home.name}
-          </p>
-        </div>
+/** A compact matchup cell — two of these sit side by side as the night's slate. */
+function MatchupCell({ game }: { game: LiveGame }) {
+  const { time, rink } = splitTimeRink(game.time);
+  return (
+    <Link href={`/games/${game.id}`} className="group block px-2 py-6 text-center">
+      <div className="flex items-center justify-center gap-2 sm:gap-3 md:gap-4">
+        <MatchupSide name={game.awayTeam} />
+        <span className="nameplate self-center pb-5 text-xs text-neutral-300">at</span>
+        <MatchupSide name={game.homeTeam} />
       </div>
-
-      <p className="mt-5 text-sm font-medium text-neutral-600 md:text-base">
+      <p className="mt-4 text-xs font-medium text-neutral-600 sm:text-sm">
         {time ? <span className="text-neutral-900">{time}</span> : null}
         {rink ? <span className="text-neutral-500"> · {rink}</span> : null}
       </p>
@@ -72,19 +61,19 @@ function CenterIceHero({ games }: { games: LiveGame[] }) {
       <div className="relative flex justify-center">
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[268px] w-[268px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.06] md:h-[360px] md:w-[360px]"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[272px] w-[272px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.06] md:h-[384px] md:w-[384px]"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[212px] w-[212px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.045] md:h-[284px] md:w-[284px]"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[228px] w-[228px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.045] md:h-[324px] md:w-[324px]"
         />
         <Image
           src={LOGO}
           alt="Outlaw Hockey League"
-          width={320}
-          height={320}
-          sizes="(min-width: 768px) 240px, 176px"
-          className="relative h-auto w-44 object-contain md:w-60"
+          width={480}
+          height={480}
+          sizes="(min-width: 768px) 320px, 224px"
+          className="relative h-auto w-56 object-contain md:w-80"
           priority
         />
       </div>
@@ -93,9 +82,11 @@ function CenterIceHero({ games }: { games: LiveGame[] }) {
         {formatGameDate(games[0].date)}
       </p>
 
-      <div className="relative mx-auto mt-2 max-w-2xl divide-y divide-black/[0.07]">
+      {/* Both Wednesday games on one line; they stack only on the narrowest
+          phones, where two nameplates side by side would collide. */}
+      <div className="relative mx-auto mt-2 grid max-w-3xl grid-cols-1 divide-y divide-black/[0.07] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         {games.map((game) => (
-          <MatchupRow key={game.id} game={game} />
+          <MatchupCell key={game.id} game={game} />
         ))}
       </div>
 
