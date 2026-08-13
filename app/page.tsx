@@ -9,72 +9,103 @@ const LOGO = "/ohl_logo_2.png";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Center-ice hero: the badge sits at the center-ice dot inside a faint
- * face-off circle; the matchup reads like jersey nameplates around it.
- */
-function CenterIceHero({ game }: { game: LiveGame }) {
+/** One matchup on the night: nameplates flanking the "at", time and rink below. */
+function MatchupRow({ game }: { game: LiveGame }) {
   const { time, rink } = splitTimeRink(game.time);
   const away = { name: game.awayTeam, colors: getTeamColors(game.awayTeam) };
   const home = { name: game.homeTeam, colors: getTeamColors(game.homeTeam) };
 
   return (
-    <Link href={`/games/${game.id}`} className="hero-rise group relative block overflow-hidden py-10 text-center md:py-16">
-      {/* face-off circle */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.06] md:h-[680px] md:w-[680px]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[360px] w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.045] md:h-[440px] md:w-[440px]"
-      />
-
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-neutral-500">Next game</p>
-
-      <div className="mt-8 flex items-center justify-center gap-6 sm:gap-10 md:gap-16">
-        <div className="flex w-32 flex-col items-center gap-4 sm:w-44 md:w-56">
+    <Link href={`/games/${game.id}`} className="group block py-6 text-center md:py-7">
+      <div className="flex items-center justify-center gap-4 sm:gap-8 md:gap-12">
+        <div className="flex w-32 flex-col items-center gap-2.5 sm:w-36 md:w-44">
           {teamLogo(away.name) ? (
             <>
-              <div className="md:hidden"><TeamLogo name={away.name} size={104} /></div>
-              <div className="hidden md:block"><TeamLogo name={away.name} size={148} /></div>
+              <div className="md:hidden"><TeamLogo name={away.name} size={56} /></div>
+              <div className="hidden md:block"><TeamLogo name={away.name} size={76} /></div>
             </>
           ) : null}
           <p
-            className="nameplate text-2xl leading-none text-neutral-900 sm:text-3xl md:text-4xl"
-            style={{ borderBottom: `3px solid ${away.colors.border}`, paddingBottom: "0.4rem" }}
+            className="nameplate text-base leading-none text-neutral-900 sm:text-xl md:text-2xl"
+            style={{ borderBottom: `3px solid ${away.colors.border}`, paddingBottom: "0.35rem" }}
           >
             {away.name}
           </p>
         </div>
 
-        <span className="nameplate self-center pb-8 text-xl text-neutral-300 md:text-2xl">at</span>
+        <span className="nameplate self-center pb-6 text-base text-neutral-300 md:text-lg">at</span>
 
-        <div className="flex w-32 flex-col items-center gap-4 sm:w-44 md:w-56">
+        <div className="flex w-32 flex-col items-center gap-2.5 sm:w-36 md:w-44">
           {teamLogo(home.name) ? (
             <>
-              <div className="md:hidden"><TeamLogo name={home.name} size={104} /></div>
-              <div className="hidden md:block"><TeamLogo name={home.name} size={148} /></div>
+              <div className="md:hidden"><TeamLogo name={home.name} size={56} /></div>
+              <div className="hidden md:block"><TeamLogo name={home.name} size={76} /></div>
             </>
           ) : null}
           <p
-            className="nameplate text-2xl leading-none text-neutral-900 sm:text-3xl md:text-4xl"
-            style={{ borderBottom: `3px solid ${home.colors.border}`, paddingBottom: "0.4rem" }}
+            className="nameplate text-base leading-none text-neutral-900 sm:text-xl md:text-2xl"
+            style={{ borderBottom: `3px solid ${home.colors.border}`, paddingBottom: "0.35rem" }}
           >
             {home.name}
           </p>
         </div>
       </div>
 
-      <p className="mt-10 text-base font-medium text-neutral-600 md:text-lg">
-        {formatGameDate(game.date)}
-        {time ? <span className="text-neutral-900"> · {time}</span> : null}
+      <p className="mt-5 text-sm font-medium text-neutral-600 md:text-base">
+        {time ? <span className="text-neutral-900">{time}</span> : null}
         {rink ? <span className="text-neutral-500"> · {rink}</span> : null}
       </p>
-      <p className="mt-5 text-sm font-medium text-neutral-400 transition group-hover:text-neutral-700">
-        Full schedule →
-      </p>
     </Link>
+  );
+}
+
+/**
+ * Center-ice hero: the league mark sits at the center-ice dot inside a faint
+ * face-off circle, with the whole night's slate — both Wednesday games —
+ * stacked beneath it.
+ */
+function CenterIceHero({ games }: { games: LiveGame[] }) {
+  return (
+    <div className="hero-rise relative overflow-hidden py-10 text-center md:py-14">
+      {/* Face-off circles are centered on the mark itself — the logo is the
+          center-ice dot — so they track it across breakpoints. */}
+      <div className="relative flex justify-center">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[268px] w-[268px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.06] md:h-[360px] md:w-[360px]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[212px] w-[212px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black/[0.045] md:h-[284px] md:w-[284px]"
+        />
+        <Image
+          src={LOGO}
+          alt="Outlaw Hockey League"
+          width={320}
+          height={320}
+          sizes="(min-width: 768px) 240px, 176px"
+          className="relative h-auto w-44 object-contain md:w-60"
+          priority
+        />
+      </div>
+
+      <p className="relative mt-8 text-xs font-semibold uppercase tracking-[0.28em] text-neutral-500">
+        {formatGameDate(games[0].date)}
+      </p>
+
+      <div className="relative mx-auto mt-2 max-w-2xl divide-y divide-black/[0.07]">
+        {games.map((game) => (
+          <MatchupRow key={game.id} game={game} />
+        ))}
+      </div>
+
+      <Link
+        href="/schedule"
+        className="relative mt-6 inline-block text-sm font-medium text-neutral-400 transition hover:text-neutral-700"
+      >
+        Full schedule →
+      </Link>
+    </div>
   );
 }
 
@@ -157,7 +188,9 @@ export default async function Home() {
   const season = await getActiveSeasonLive();
   const games = season?.games ?? [];
   const upcoming = sortChronological(games.filter((g) => g.status !== "final"));
-  const nextGame = upcoming[0] ?? null;
+  // The league plays two games every Wednesday, so the hero shows the whole
+  // night — every game sharing the next date, not just the earliest one.
+  const nextNight = upcoming.length ? upcoming.filter((g) => g.date === upcoming[0].date) : [];
   const finals = games.filter((g) => g.status === "final" && g.gameType === "regular");
   const hasFinals = finals.length > 0;
   const latest = hasFinals ? sortChronological(finals)[finals.length - 1] : null;
@@ -166,8 +199,8 @@ export default async function Home() {
     <section className="space-y-6">
       <h1 className="sr-only">Outlaw Hockey League</h1>
 
-      {nextGame ? (
-        <CenterIceHero game={nextGame} />
+      {nextNight.length ? (
+        <CenterIceHero games={nextNight} />
       ) : (
         <div className="flex justify-center py-10">
           <Image src={LOGO} alt="Outlaw Hockey League" width={220} height={220} sizes="220px" className="h-auto w-44 object-contain sm:w-52" priority />
