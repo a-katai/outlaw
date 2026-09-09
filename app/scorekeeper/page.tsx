@@ -1,3 +1,4 @@
+import { timeSortKey } from "@/app/components/next-game-card";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
@@ -40,7 +41,8 @@ export default async function ScorekeeperIndexPage() {
     .filter((g) => g.status === "scheduled" || g.status === "live")
     .sort((a, b) => {
       if (a.status !== b.status) return a.status === "live" ? -1 : 1;
-      return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return timeSortKey(a.time) - timeSortKey(b.time); // same night: 10:00 B before 10:30 A
     });
 
   return (
