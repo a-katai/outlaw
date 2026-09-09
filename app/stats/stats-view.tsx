@@ -8,7 +8,7 @@ import { getTeamColors, type SkaterStat, type TeamStanding } from "@/lib/league-
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import type { GoalieStat, LiveRosterPlayer, LiveTeam, SeasonSummary } from "@/lib/live-season";
 
-type SortKey = "gamesPlayed" | "goals" | "assists" | "points" | "ppg";
+type SortKey = "gamesPlayed" | "goals" | "assists" | "points" | "ppg" | "pim";
 
 export type StatsSeasonViewModel = {
   id: string;
@@ -54,6 +54,9 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
       copied.sort((a, b) => {
         if (sortKey === "ppg") {
           return b.points / b.gamesPlayed - a.points / a.gamesPlayed;
+        }
+        if (sortKey === "pim") {
+          return (b.pim ?? 0) - (a.pim ?? 0);
         }
         return b[sortKey] - a[sortKey];
       });
@@ -141,7 +144,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
 
     autoTable(doc, {
       startY: 32,
-      head: [["League Players", "Team", "GP", "G", "A", "PTS", "PTS/GP"]],
+      head: [["League Players", "Team", "GP", "G", "A", "PTS", "PTS/GP", "PIM"]],
       body: leaguePlayers.map((player) => [
         player.player,
         player.team,
@@ -150,6 +153,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
         player.assists,
         player.points,
         (player.points / player.gamesPlayed).toFixed(2),
+        player.pim ?? 0,
       ]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [29, 29, 31] },
@@ -169,7 +173,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
       startY: (doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY
         ? ((doc as JsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 0) + 10
         : 40,
-      head: [["Subs", "Team", "GP", "G", "A", "PTS", "PTS/GP"]],
+      head: [["Subs", "Team", "GP", "G", "A", "PTS", "PTS/GP", "PIM"]],
       body: subPlayers.map((player) => [
         player.player,
         player.team,
@@ -178,6 +182,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
         player.assists,
         player.points,
         (player.points / player.gamesPlayed).toFixed(2),
+        player.pim ?? 0,
       ]),
       styles: { fontSize: 9 },
       headStyles: { fillColor: [79, 70, 229] },
@@ -415,16 +420,17 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
           </div>
 
           <div className="glass-card overflow-hidden rounded-3xl md:hidden">
-            <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+            <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(5,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
               <p>Player</p>
               <p className="text-center">GP</p>
               <p className="text-center">G</p>
               <p className="text-center">A</p>
               <p className="text-center">PTS</p>
+              <p className="text-center">PIM</p>
             </div>
             <div className="divide-y divide-black/5">
               {leaguePlayers.map((player) => (
-                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-semibold text-neutral-900"><PlayerNameLink player={player} /></p>
                     <span
@@ -445,6 +451,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                     <p className="font-semibold text-neutral-900">{player.points}</p>
                     <p className="text-[10px] text-neutral-500">{(player.points / player.gamesPlayed).toFixed(2)}</p>
                   </div>
+                  <p className="text-center">{player.pim ?? 0}</p>
                 </div>
               ))}
             </div>
@@ -489,6 +496,11 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                       PTS/GP
                     </button>
                   </th>
+                  <th className="px-4 py-3">
+                    <button type="button" onClick={() => setSortKey("pim")} className={sortButtonClass("pim")}>
+                      PIM
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -512,6 +524,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                     <td className="px-4 py-3">{player.assists}</td>
                     <td className="px-4 py-3 font-semibold text-neutral-900">{player.points}</td>
                     <td className="px-4 py-3 font-medium text-neutral-700">{(player.points / player.gamesPlayed).toFixed(2)}</td>
+                    <td className="px-4 py-3">{player.pim ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
@@ -525,16 +538,17 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
           </div>
 
           <div className="glass-card overflow-hidden rounded-3xl md:hidden">
-            <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+            <div className="grid grid-cols-[minmax(0,1.8fr)_repeat(5,minmax(0,1fr))] gap-2 border-b border-black/5 bg-neutral-50/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
               <p>Sub</p>
               <p className="text-center">GP</p>
               <p className="text-center">G</p>
               <p className="text-center">A</p>
               <p className="text-center">PTS</p>
+              <p className="text-center">PIM</p>
             </div>
             <div className="divide-y divide-black/5">
               {subPlayers.map((player) => (
-                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
+                <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-semibold text-neutral-900"><PlayerNameLink player={player} /></p>
                     <span
@@ -555,6 +569,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                     <p className="font-semibold text-neutral-900">{player.points}</p>
                     <p className="text-[10px] text-neutral-500">{(player.points / player.gamesPlayed).toFixed(2)}</p>
                   </div>
+                  <p className="text-center">{player.pim ?? 0}</p>
                 </div>
               ))}
             </div>
@@ -591,6 +606,11 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                       PTS/GP
                     </button>
                   </th>
+                  <th className="px-4 py-3">
+                    <button type="button" onClick={() => setSortKey("pim")} className={sortButtonClass("pim")}>
+                      PIM
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -614,6 +634,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                     <td className="px-4 py-3">{player.assists}</td>
                     <td className="px-4 py-3 font-semibold text-neutral-900">{player.points}</td>
                     <td className="px-4 py-3 font-medium text-neutral-700">{(player.points / player.gamesPlayed).toFixed(2)}</td>
+                    <td className="px-4 py-3">{player.pim ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
