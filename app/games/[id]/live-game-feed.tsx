@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GameStatus, GoalEventLine } from "@/lib/live-season";
+import type { GameStatus, GoalEventLine, PenaltyEventLine } from "@/lib/live-season";
+import { PenaltyList } from "./penalty-list";
 
 const POLL_MS = 15000;
 
@@ -10,6 +11,7 @@ type LiveState = {
   homeScore: number | null;
   awayScore: number | null;
   goalEvents: GoalEventLine[];
+  penaltyEvents: PenaltyEventLine[];
 };
 
 /** Public, client-side live score + goal feed for /games/[id]. Polls while the game is live. */
@@ -36,7 +38,13 @@ export function LiveGameFeed({
         if (!res.ok) return;
         const data = await res.json();
         if (!ignore && data.ok) {
-          setState({ status: data.status, homeScore: data.homeScore, awayScore: data.awayScore, goalEvents: data.goalEvents });
+          setState({
+            status: data.status,
+            homeScore: data.homeScore,
+            awayScore: data.awayScore,
+            goalEvents: data.goalEvents,
+            penaltyEvents: data.penaltyEvents ?? [],
+          });
         }
       } catch {
         // Transient poll failure — try again next tick.
@@ -98,6 +106,8 @@ export function LiveGameFeed({
           </div>
         </div>
       ) : null}
+
+      <PenaltyList penalties={state.penaltyEvents} />
     </>
   );
 }

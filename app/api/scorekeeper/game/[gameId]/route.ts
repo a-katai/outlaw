@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
   if (!game) return NextResponse.json({ ok: false, error: "Game not found" }, { status: 404 });
 
   const teamIds = [game.home_team_id, game.away_team_id];
-  const [teamsRes, picksRes, rostersRes, goalsRes, allPlayersRes] = await Promise.all([
+  const [teamsRes, picksRes, rostersRes, goalsRes, allPlayersRes, penaltiesRes] = await Promise.all([
     supabase.from("teams").select("id,name").in("id", teamIds),
     supabase.from("draft_picks").select("team_id,player_id").in("team_id", teamIds),
     supabase.from("game_rosters").select("team_id,player_id").eq("game_id", gameId),
@@ -30,12 +30,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
     supabase.from("players").select("id,name,position,rank,jersey_number,is_sub").order("name", { ascending: true }),
+    supabase
+      .from("penalty_events")
+      .select("id,team_id,player_id,infraction,minutes,created_at")
+      .eq("game_id", gameId)
+      .order("created_at", { ascending: true }),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
   if (rostersRes.error) return NextResponse.json({ ok: false, error: rostersRes.error.message }, { status: 500 });
   if (goalsRes.error) return NextResponse.json({ ok: false, error: goalsRes.error.message }, { status: 500 });
   if (allPlayersRes.error) return NextResponse.json({ ok: false, error: allPlayersRes.error.message }, { status: 500 });
+  if (penaltiesRes.error) return NextResponse.json({ ok: false, error: penaltiesRes.error.message }, { status: 500 });
 
   const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
   const picks = picksRes.data ?? [];
@@ -81,6 +87,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
     createdAt: g.created_at,
   }));
 
+  const penaltyEvents = (penaltiesRes.data ?? []).map((p) => ({
+    id: p.id,
+    teamId: p.team_id,
+    playerId: p.player_id,
+    playerName: p.player_id ? (playerById.get(p.player_id)?.name ?? "Unknown") : null,
+    infraction: p.infraction,
+    minutes: p.minutes,
+    createdAt: p.created_at,
+  }));
+
   return NextResponse.json({
     ok: true,
     game: {
@@ -103,6 +119,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
     },
     playerPool,
     goalEvents,
+    penaltyEvents,
   });
 }
 
@@ -112,6 +129,9 @@ type Body =
   | { action: "remove-goal"; eventId: string }
   | { action: "end" }
   | { action: "reopen" }
+  | { action: "reset" }
+  | { action: "add-penalty"; teamId: string; playerId: string | null; infraction: string; minutes: number }
+  | { action: "remove-penalty"; eventId: string }
   | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
@@ -219,6 +239,62 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
       const { error } = await supabase.from("games").update({ status: "final" }).eq("id", gameId);
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       break;
+    }
+
+    case "reset": {
+      // Undo an accidental start: back to scheduled, wiping the sheet.
+      // Lineups stay — those were right before the tap.
+      if (game.status !== "live") {
+        return NextResponse.json({ ok: false, error: "Only a live game can be reset" }, { status: 400 });
+      }
+      const goalsDel = await supabase.from("goal_events").delete().eq("game_id", gameId);
+      if (goalsDel.error) return NextResponse.json({ ok: false, error: goalsDel.error.message }, { status: 500 });
+      const pensDel = await supabase.from("penalty_events").delete().eq("game_id", gameId);
+      if (pensDel.error) return NextResponse.json({ ok: false, error: pensDel.error.message }, { status: 500 });
+      const statsDel = await supabase.from("game_stats").delete().eq("game_id", gameId);
+      if (statsDel.error) return NextResponse.json({ ok: false, error: statsDel.error.message }, { status: 500 });
+      const { error } = await supabase
+        .from("games")
+        .update({ status: "scheduled", home_score: null, away_score: null })
+        .eq("id", gameId);
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      // No recompute: it would seed 0–0 onto a game that hasn't happened.
+      return NextResponse.json({ ok: true });
+    }
+
+    case "add-penalty": {
+      if (body.teamId !== game.home_team_id && body.teamId !== game.away_team_id) {
+        return NextResponse.json({ ok: false, error: "Invalid team" }, { status: 400 });
+      }
+      const infraction = body.infraction?.trim();
+      if (!infraction) return NextResponse.json({ ok: false, error: "Pick an infraction" }, { status: 400 });
+      const minutes = Number(body.minutes);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 30) {
+        return NextResponse.json({ ok: false, error: "Minutes must be 1–30" }, { status: 400 });
+      }
+      const { error } = await supabase.from("penalty_events").insert({
+        game_id: gameId,
+        team_id: body.teamId,
+        player_id: body.playerId || null,
+        infraction,
+        minutes,
+      });
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      // A penalized player was on the ice — check them in like a scorer.
+      if (body.playerId) {
+        const { error: rosterError } = await supabase.from("game_rosters").upsert(
+          { game_id: gameId, player_id: body.playerId, team_id: body.teamId },
+          { onConflict: "game_id,player_id", ignoreDuplicates: true },
+        );
+        if (rosterError) return NextResponse.json({ ok: false, error: rosterError.message }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    case "remove-penalty": {
+      const { error } = await supabase.from("penalty_events").delete().eq("id", body.eventId).eq("game_id", gameId);
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
     }
 
     case "reopen": {

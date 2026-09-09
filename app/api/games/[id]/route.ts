@@ -13,5 +13,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     homeScore: game.homeScore,
     awayScore: game.awayScore,
     goalEvents: game.goalEvents,
+    penaltyEvents: game.penaltyEvents,
   });
 }

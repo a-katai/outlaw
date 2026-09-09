@@ -538,6 +538,16 @@ export type GoalEventLine = {
   createdAt: string;
 };
 
+export type PenaltyEventLine = {
+  id: string;
+  teamId: string;
+  teamName: string;
+  playerName: string | null; // null = bench penalty
+  infraction: string;
+  minutes: number;
+  createdAt: string;
+};
+
 export type SeriesRef = { id: string; round: number; name: string };
 
 export type LineupPlayer = { playerId: string; playerName: string; jersey: number | null; position: string | null };
@@ -559,6 +569,7 @@ export type GameDetail = {
   homeScorers: GameStatLine[];
   awayScorers: GameStatLine[];
   goalEvents: GoalEventLine[];
+  penaltyEvents: PenaltyEventLine[];
   lineups: { home: LineupPlayer[]; away: LineupPlayer[] };
 };
 
@@ -575,7 +586,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
   if (!game) return null;
 
   const teamIds = [game.home_team_id, game.away_team_id];
-  const [teamsRes, statsRes, goalsRes, rostersRes, seriesRes] = await Promise.all([
+  const [teamsRes, statsRes, goalsRes, rostersRes, seriesRes, penaltiesRes] = await Promise.all([
     supabase.from("teams").select("id,name").in("id", teamIds),
     supabase.from("game_stats").select("player_id,team_id,goals,assists").eq("game_id", id),
     supabase
@@ -587,6 +598,11 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     game.series_id
       ? supabase.from("playoff_series").select("id,round,name").eq("id", game.series_id).maybeSingle()
       : Promise.resolve({ data: null as { id: string; round: number; name: string } | null }),
+    supabase
+      .from("penalty_events")
+      .select("id,team_id,player_id,infraction,minutes,created_at")
+      .eq("game_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   const teamNameById = new Map((teamsRes.data ?? []).map((t) => [t.id, t.name]));
@@ -596,10 +612,12 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
   const statRows = statsRes.data ?? [];
   const goalRows = goalsRes.data ?? [];
   const rosterRows = rostersRes.data ?? [];
+  const penaltyRows = penaltiesRes.data ?? [];
 
   const playerIds = Array.from(
     new Set([
       ...statRows.map((s) => s.player_id),
+      ...penaltyRows.map((p) => p.player_id).filter((v): v is string => Boolean(v)),
       ...goalRows.map((g) => g.scorer_id).filter((v): v is string => Boolean(v)),
       ...goalRows.map((g) => g.assist_id).filter((v): v is string => Boolean(v)),
       ...rosterRows.map((r) => r.player_id),
@@ -631,6 +649,16 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     scorerName: g.scorer_id ? (playerNameById.get(g.scorer_id) ?? "Unknown") : null,
     assistName: g.assist_id ? (playerNameById.get(g.assist_id) ?? "Unknown") : null,
     createdAt: g.created_at,
+  }));
+
+  const penaltyEvents: PenaltyEventLine[] = penaltyRows.map((p) => ({
+    id: p.id,
+    teamId: p.team_id,
+    teamName: teamNameById.get(p.team_id) ?? "Unknown",
+    playerName: p.player_id ? (playerNameById.get(p.player_id) ?? "Unknown") : null,
+    infraction: p.infraction,
+    minutes: p.minutes,
+    createdAt: p.created_at,
   }));
 
   const toLineupPlayer = (r: { player_id: string }): LineupPlayer => ({
@@ -674,6 +702,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     homeScorers,
     awayScorers,
     goalEvents,
+    penaltyEvents,
     lineups,
   };
 });

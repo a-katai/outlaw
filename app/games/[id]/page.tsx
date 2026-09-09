@@ -6,6 +6,7 @@ import { getTeamColors } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { matchGameFilm } from "@/lib/game-film";
 import { LiveGameFeed } from "./live-game-feed";
+import { PenaltyList } from "./penalty-list";
 import { ShareScoreButton } from "./share-score-button";
 import type { VideoItem } from "@/app/components/video-gallery";
 import videosData from "@/videos-data.json";
@@ -238,6 +239,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             homeScore: game.homeScore,
             awayScore: game.awayScore,
             goalEvents: game.goalEvents,
+            penaltyEvents: game.penaltyEvents,
           }}
         />
       ) : (
@@ -256,6 +258,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       ) : null}
+
+      {isFinal ? <PenaltyList penalties={game.penaltyEvents} /> : null}
 
       {isFinal ? lineupsSection : null}
 

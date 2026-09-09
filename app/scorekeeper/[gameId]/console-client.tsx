@@ -12,6 +12,35 @@ type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: bool
 /** "#55 Tony Katai" when a number is claimed; the bare name otherwise. */
 const label = (p: { name: string; jersey: number | null }) => (p.jersey == null ? p.name : `#${p.jersey} ${p.name}`);
 
+type PenaltyEvent = {
+  id: string;
+  teamId: string;
+  playerId: string | null;
+  playerName: string | null;
+  infraction: string;
+  minutes: number;
+  createdAt: string;
+};
+
+const INFRACTIONS = [
+  "Tripping",
+  "Hooking",
+  "Holding",
+  "Slashing",
+  "High-sticking",
+  "Interference",
+  "Cross-checking",
+  "Roughing",
+  "Elbowing",
+  "Boarding",
+  "Delay of game",
+  "Too many men",
+  "Unsportsmanlike conduct",
+  "Misconduct",
+  "Other",
+];
+const MINUTE_OPTIONS = [2, 4, 5, 10];
+
 type GoalEvent = {
   id: string;
   teamId: string;
@@ -42,6 +71,7 @@ type ConsoleData = {
   roster: { home: RosterPlayer[]; away: RosterPlayer[] };
   playerPool: PoolPlayer[];
   goalEvents: GoalEvent[];
+  penaltyEvents: PenaltyEvent[];
 };
 
 async function postAction(gameId: string, body: unknown) {
@@ -74,6 +104,11 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
   const [scorerId, setScorerId] = useState("");
   const [assistId, setAssistId] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [penaltyTeam, setPenaltyTeam] = useState<"home" | "away" | null>(null);
+  const [penaltyPlayerId, setPenaltyPlayerId] = useState("");
+  const [infraction, setInfraction] = useState(INFRACTIONS[0]);
+  const [minutes, setMinutes] = useState(2);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -145,6 +180,30 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
 
   const reopenGame = () => runAction({ action: "reopen" });
 
+  const resetGame = async () => {
+    const ok = await runAction({ action: "reset" });
+    if (ok) setConfirmReset(false);
+  };
+
+  const openPenalty = (team: "home" | "away") => {
+    setPenaltyTeam(team);
+    setPenaltyPlayerId("");
+    setInfraction(INFRACTIONS[0]);
+    setMinutes(2);
+    setActionError(null);
+  };
+
+  const closePenalty = () => setPenaltyTeam(null);
+
+  const confirmPenalty = async () => {
+    if (!penaltyTeam || !data) return;
+    const teamId = penaltyTeam === "home" ? data.game.homeTeamId : data.game.awayTeamId;
+    const ok = await runAction({ action: "add-penalty", teamId, playerId: penaltyPlayerId || null, infraction, minutes });
+    if (ok) closePenalty();
+  };
+
+  const removePenalty = (eventId: string) => runAction({ action: "remove-penalty", eventId });
+
   if (loading) {
     return <div className="glass-card rounded-3xl p-10 text-center text-sm text-neutral-500">Loading…</div>;
   }
@@ -162,7 +221,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
     );
   }
 
-  const { game, roster, playerPool, goalEvents } = data;
+  const { game, roster, playerPool, goalEvents, penaltyEvents } = data;
   const rosterFor = (team: "home" | "away") => (team === "home" ? roster.home : roster.away);
   const dressedCount = (list: RosterPlayer[]) => list.filter((p) => p.dressed).length;
   const availablePool = playerPool.filter(
@@ -333,6 +392,91 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
             </div>
           ) : null}
 
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => openPenalty("away")}
+              className="rounded-2xl border border-black/10 bg-white px-3 py-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Penalty {game.awayTeam}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => openPenalty("home")}
+              className="rounded-2xl border border-black/10 bg-white px-3 py-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Penalty {game.homeTeam}
+            </button>
+          </div>
+
+          {penaltyTeam ? (
+            <div className="glass-card space-y-3 rounded-3xl p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                Penalty — {penaltyTeam === "home" ? game.homeTeam : game.awayTeam}
+              </p>
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium text-neutral-700">Player</span>
+                <select
+                  value={penaltyPlayerId}
+                  onChange={(e) => setPenaltyPlayerId(e.target.value)}
+                  className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
+                >
+                  <option value="">Bench / unknown</option>
+                  {rosterOptions(rosterFor(penaltyTeam))}
+                </select>
+              </label>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-neutral-700">Infraction</span>
+                  <select
+                    value={infraction}
+                    onChange={(e) => setInfraction(e.target.value)}
+                    className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
+                  >
+                    {INFRACTIONS.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-neutral-700">Minutes</span>
+                  <select
+                    value={minutes}
+                    onChange={(e) => setMinutes(Number(e.target.value))}
+                    className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
+                  >
+                    {MINUTE_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={confirmPenalty}
+                  className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                >
+                  {busy ? "Logging…" : "Log penalty"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closePenalty}
+                  className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {confirmEnd ? (
             <div className="flex gap-2">
               <button
@@ -358,6 +502,40 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
               className="w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
             >
               End game
+            </button>
+          )}
+
+          {confirmReset ? (
+            <div className="glass-card space-y-3 rounded-3xl p-5">
+              <p className="text-sm text-neutral-700">
+                Reset puts this game back to <span className="font-semibold">scheduled</span> and clears every goal and
+                penalty on the sheet. Lineups stay.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={resetGame}
+                  className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                >
+                  {busy ? "Resetting…" : "Confirm reset"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(false)}
+                  className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmReset(true)}
+              className="w-full text-center text-xs font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
+            >
+              Started by mistake? Reset game
             </button>
           )}
         </div>
@@ -407,6 +585,39 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
                   </div>
                 );
               })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold text-neutral-900">Penalties</h2>
+        {penaltyEvents.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-500">No penalties logged.</p>
+        ) : (
+          <div className="glass-card mt-3 divide-y divide-black/5 overflow-hidden rounded-3xl">
+            {[...penaltyEvents].reverse().map((p) => {
+              const teamName = p.teamId === game.homeTeamId ? game.homeTeam : game.awayTeam;
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-4">
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-900">
+                      {teamName} — {p.playerName ?? "Bench"}
+                    </p>
+                    <p className="text-sm text-neutral-500">
+                      {p.infraction} · {p.minutes} min
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => removePenalty(p.id)}
+                    className="shrink-0 text-xs font-medium text-neutral-500 hover:text-rose-600 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
