@@ -79,13 +79,17 @@ function LineupCard({ teamName, players }: { teamName: string; players: LineupPl
       ) : (
         <ul className="mt-3 space-y-1 text-sm text-neutral-700">
           {players.map((p) => (
-            <li key={p.playerId}>
+            <li key={p.playerId} className="flex items-center gap-3">
+              <span className="w-7 shrink-0 text-right text-xs font-semibold tabular-nums text-neutral-400">
+                {p.jersey !== null ? `#${p.jersey}` : ""}
+              </span>
               <Link
                 href={`/players/${p.playerId}`}
                 className="transition hover:text-neutral-900 hover:underline hover:underline-offset-4"
               >
                 {p.playerName}
               </Link>
+              {p.position === "G" ? <span className="text-xs font-semibold text-neutral-400">G</span> : null}
             </li>
           ))}
         </ul>

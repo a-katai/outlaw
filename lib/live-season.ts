@@ -540,7 +540,7 @@ export type GoalEventLine = {
 
 export type SeriesRef = { id: string; round: number; name: string };
 
-export type LineupPlayer = { playerId: string; playerName: string };
+export type LineupPlayer = { playerId: string; playerName: string; jersey: number | null; position: string | null };
 
 export type GameDetail = {
   id: string;
@@ -606,9 +606,10 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     ]),
   );
   const playersRes = playerIds.length
-    ? await supabase.from("players").select("id,name").in("id", playerIds)
-    : { data: [] as { id: string; name: string }[] };
+    ? await supabase.from("players").select("id,name,jersey_number,position").in("id", playerIds)
+    : { data: [] as { id: string; name: string; jersey_number: number | null; position: string | null }[] };
   const playerNameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
+  const playerById = new Map((playersRes.data ?? []).map((p) => [p.id, p]));
 
   const toLine = (s: { player_id: string; goals: number; assists: number }): GameStatLine => ({
     playerId: s.player_id,
@@ -635,8 +636,20 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
   const toLineupPlayer = (r: { player_id: string }): LineupPlayer => ({
     playerId: r.player_id,
     playerName: playerNameById.get(r.player_id) ?? "Unknown",
+    jersey: playerById.get(r.player_id)?.jersey_number ?? null,
+    position: playerById.get(r.player_id)?.position ?? null,
   });
-  const sortLineup = (rows: LineupPlayer[]) => [...rows].sort((a, b) => a.playerName.localeCompare(b.playerName));
+  // Goalie last, then by number, then unnumbered by name — reads like a scoresheet.
+  const sortLineup = (rows: LineupPlayer[]) =>
+    [...rows].sort((a, b) => {
+      const ag = a.position === "G" ? 1 : 0;
+      const bg = b.position === "G" ? 1 : 0;
+      if (ag !== bg) return ag - bg;
+      if (a.jersey !== null && b.jersey !== null) return a.jersey - b.jersey;
+      if (a.jersey !== null) return -1;
+      if (b.jersey !== null) return 1;
+      return a.playerName.localeCompare(b.playerName);
+    });
   const lineups = {
     home: sortLineup(rosterRows.filter((r) => r.team_id === game.home_team_id).map(toLineupPlayer)),
     away: sortLineup(rosterRows.filter((r) => r.team_id === game.away_team_id).map(toLineupPlayer)),
