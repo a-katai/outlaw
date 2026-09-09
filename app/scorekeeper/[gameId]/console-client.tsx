@@ -7,7 +7,7 @@ import { getTeamColors } from "@/lib/league-data";
 const POLL_MS = 10000;
 
 type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null };
-type PoolPlayer = { id: string; name: string; jersey: number | null };
+type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: boolean };
 
 /** "#55 Tony Katai" when a number is claimed; the bare name otherwise. */
 const label = (p: { name: string; jersey: number | null }) => (p.jersey == null ? p.name : `#${p.jersey} ${p.name}`);
@@ -467,11 +467,26 @@ function LineupColumn({
           className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none ring-blue-500/30 focus:ring-4"
         >
           <option value="">Add player…</option>
-          {pool.map((p) => (
-            <option key={p.id} value={p.id}>
-              {label(p)}
-            </option>
-          ))}
+          {pool.some((p) => p.isSub) ? (
+            <optgroup label="Subs">
+              {pool
+                .filter((p) => p.isSub)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {label(p)}
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
+          <optgroup label="Rostered elsewhere">
+            {pool
+              .filter((p) => !p.isSub)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {label(p)}
+                </option>
+              ))}
+          </optgroup>
         </select>
         <button
           type="button"

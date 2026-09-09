@@ -339,10 +339,12 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
 
   const playerIds = Array.from(new Set([...gameStats.map((s) => s.player_id), ...gameRosters.map((r) => r.player_id)]));
   const playersRes = playerIds.length
-    ? await supabase.from("players").select("id,name,position").in("id", playerIds)
-    : { data: [] as { id: string; name: string; position: string | null }[] };
+    ? await supabase.from("players").select("id,name,position,is_sub").in("id", playerIds)
+    : { data: [] as { id: string; name: string; position: string | null; is_sub: boolean }[] };
   const players = playersRes.data ?? [];
   const playerNameById = new Map(players.map((p) => [p.id, p.name]));
+  // Subs aggregate under "Sub" — /stats already splits that label into its own table.
+  const subIds = new Set(players.filter((p) => p.is_sub).map((p) => p.id));
 
   // --- Standings: FINAL, regular-season games only. Playoff games never
   // touch the standings — they appear on game pages and /playoffs instead. ---
@@ -406,7 +408,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     .map(([playerId, agg]) => ({
       playerId,
       player: playerNameById.get(playerId) ?? "Unknown",
-      team: teamNameById.get(agg.teamId) ?? "Unknown",
+      team: subIds.has(playerId) ? "Sub" : (teamNameById.get(agg.teamId) ?? "Unknown"),
       gamesPlayed: agg.gamesPlayed,
       goals: agg.goals,
       assists: agg.assists,

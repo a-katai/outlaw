@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import type { PlayerPosition } from "@/lib/draft-types";
 
 type Body =
-  | { action: "add"; name: string; position?: PlayerPosition | null; rank?: number | null }
+  | { action: "add"; name: string; position?: PlayerPosition | null; rank?: number | null; isSub?: boolean }
+  | { action: "set-sub"; id: string; isSub: boolean }
   | { action: "bulk"; text: string }
   | { action: "delete"; id: string };
 
@@ -15,12 +16,20 @@ function isValidRank(rank: number): boolean {
   return Number.isInteger(rank) && rank >= 1 && rank <= 20;
 }
 
-/** Parses "Name [position] [rank]" — trailing rank (integer) and/or trailing
- * position (F/D/G/F-D, case-insensitive) are both optional, in either
- * combination — e.g. "Mike Smith F 3", "Mike Smith 3", "Mike Smith F", "Sam Sample". */
-function parseBulkLine(line: string): { name: string; position: PlayerPosition | null; rank: number | null } | null {
+/** Parses "Name [position] [rank] [sub]" — trailing rank (integer), trailing
+ * position (F/D/G/F-D, case-insensitive) and a trailing "sub" flag are all
+ * optional, in any combination — e.g. "Mike Smith F 3", "Mike Smith 3", "Kyle Shmunk sub". */
+function parseBulkLine(
+  line: string,
+): { name: string; position: PlayerPosition | null; rank: number | null; isSub: boolean } | null {
   const tokens = line.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
+
+  let isSub = false;
+  if (tokens.length > 1 && tokens[tokens.length - 1].toLowerCase() === "sub") {
+    isSub = true;
+    tokens.pop();
+  }
 
   let rank: number | null = null;
   if (tokens.length > 1 && /^\d+$/.test(tokens[tokens.length - 1])) {
@@ -38,7 +47,7 @@ function parseBulkLine(line: string): { name: string; position: PlayerPosition |
 
   const name = tokens.join(" ").trim();
   if (!name) return null;
-  return { name, position, rank };
+  return { name, position, rank, isSub };
 }
 
 export async function POST(req: NextRequest) {
@@ -64,7 +73,7 @@ export async function POST(req: NextRequest) {
       }
       const { data, error } = await supabase
         .from("players")
-        .insert({ name: body.name.trim(), position: body.position ?? null, rank })
+        .insert({ name: body.name.trim(), position: body.position ?? null, rank, is_sub: body.isSub === true })
         .select("*")
         .single();
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -75,7 +84,7 @@ export async function POST(req: NextRequest) {
       const rows = (body.text ?? "")
         .split("\n")
         .map(parseBulkLine)
-        .filter((row): row is { name: string; position: PlayerPosition | null; rank: number | null } => row !== null);
+        .filter((row): row is { name: string; position: PlayerPosition | null; rank: number | null; isSub: boolean } => row !== null);
       if (rows.length === 0) {
         return NextResponse.json({ ok: false, error: "No player names found" }, { status: 400 });
       }
@@ -88,10 +97,17 @@ export async function POST(req: NextRequest) {
       }
       const { data, error } = await supabase
         .from("players")
-        .insert(rows.map((r) => ({ name: r.name, position: r.position, rank: r.rank })))
+        .insert(rows.map((r) => ({ name: r.name, position: r.position, rank: r.rank, is_sub: r.isSub })))
         .select("*");
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true, players: data, count: data?.length ?? 0 });
+    }
+
+    case "set-sub": {
+      if (!body.id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+      const { error } = await supabase.from("players").update({ is_sub: body.isSub === true }).eq("id", body.id);
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
     }
 
     case "delete": {

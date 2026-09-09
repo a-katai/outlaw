@@ -19,6 +19,7 @@ export type PlayerPoolRow = {
   name: string;
   position: PlayerPosition | null;
   rank: number | null;
+  isSub: boolean;
   teamName: string | null; // drafted team name in the active season, else null
 };
 
@@ -31,7 +32,7 @@ export const getPlayerPool = cache(async (): Promise<PlayerPoolRow[]> => {
   const supabase = createBrowserClient();
 
   const [playersRes, activeSeasonRes] = await Promise.all([
-    supabase.from("players").select("id,name,position,rank"),
+    supabase.from("players").select("id,name,position,rank,is_sub"),
     supabase.from("seasons").select("id").eq("status", "active").maybeSingle(),
   ]);
   const players = playersRes.data ?? [];
@@ -57,7 +58,8 @@ export const getPlayerPool = cache(async (): Promise<PlayerPoolRow[]> => {
     name: p.name,
     position: p.position as PlayerPosition | null,
     rank: p.rank,
-    teamName: teamNameByPlayerId.get(p.id) ?? null,
+    isSub: p.is_sub,
+    teamName: p.is_sub ? null : (teamNameByPlayerId.get(p.id) ?? null),
   }));
 
   return sortByRankThenName(rows);
@@ -109,6 +111,7 @@ export type PlayerProfile = {
   name: string;
   position: PlayerPosition | null;
   rank: number | null;
+  isSub: boolean;
   teamName: string | null; // drafted team name in the active season, else null
   // Skater shape — populated for non-goalie positions only.
   career: PlayerCareerRow[]; // DB seasons, newest first; playoff row only if it has GP
@@ -129,7 +132,7 @@ export type PlayerProfile = {
 export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile | null> => {
   const supabase = createBrowserClient();
 
-  const { data: player } = await supabase.from("players").select("id,name,position,rank").eq("id", id).maybeSingle();
+  const { data: player } = await supabase.from("players").select("id,name,position,rank,is_sub").eq("id", id).maybeSingle();
   if (!player) return null;
 
   const [activeSeasonRes, statsRes, rostersRes] = await Promise.all([
@@ -328,6 +331,7 @@ export const getPlayerProfile = cache(async (id: string): Promise<PlayerProfile 
   return {
     id: player.id,
     name: player.name,
+    isSub: player.is_sub,
     position: player.position as PlayerPosition | null,
     rank: player.rank,
     teamName,

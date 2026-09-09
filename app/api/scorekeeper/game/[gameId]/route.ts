@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
       .select("id,team_id,scorer_id,assist_id,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
-    supabase.from("players").select("id,name,position,rank,jersey_number").order("name", { ascending: true }),
+    supabase.from("players").select("id,name,position,rank,jersey_number,is_sub").order("name", { ascending: true }),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
@@ -69,7 +69,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
   const rosteredIds = new Set([...homeRoster.map((p) => p.id), ...awayRoster.map((p) => p.id)]);
   const playerPool = allPlayers
     .filter((p) => !rosteredIds.has(p.id))
-    .map((p) => ({ id: p.id, name: p.name, position: p.position, rank: p.rank, jersey: p.jersey_number ?? null }));
+    .map((p) => ({ id: p.id, name: p.name, position: p.position, rank: p.rank, jersey: p.jersey_number ?? null, isSub: p.is_sub }));
 
   const goalEvents = goals.map((g) => ({
     id: g.id,

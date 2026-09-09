@@ -8,6 +8,7 @@ export type Player = {
   name: string;
   position: PlayerPosition | null;
   rank: number | null;
+  is_sub: boolean;
   email: string | null;
   phone: string | null;
   created_at: string;

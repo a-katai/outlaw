@@ -100,6 +100,8 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
               {teamLogo(profile.teamName) ? <TeamLogo name={profile.teamName} size={24} /> : null}
               <TeamPill name={profile.teamName} />
             </>
+          ) : profile.isSub ? (
+            <span className="rounded-full border border-black/10 px-2.5 py-1 text-xs font-semibold text-neutral-500">Sub</span>
           ) : (
             <span className="text-sm font-medium text-neutral-400">Awaiting draft</span>
           )}

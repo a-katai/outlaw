@@ -23,8 +23,13 @@ export function PlayersSearch({ players }: { players: PlayerPoolRow[] }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return players;
-    return players.filter((p) => p.name.toLowerCase().includes(q));
+    const pool = q ? players.filter((p) => p.name.toLowerCase().includes(q)) : players;
+    return pool.filter((p) => !p.isSub);
+  }, [players, search]);
+
+  const subs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return players.filter((p) => p.isSub && (!q || p.name.toLowerCase().includes(q)));
   }, [players, search]);
 
   return (
@@ -63,8 +68,30 @@ export function PlayersSearch({ players }: { players: PlayerPoolRow[] }) {
       </div>
 
       <p className="mt-3 text-xs text-neutral-500">
-        Showing {filtered.length} of {players.length} players
+        Showing {filtered.length} of {players.length - subs.length} players
       </p>
+
+      {subs.length ? (
+        <div className="mt-10">
+          <h2 className="text-2xl font-semibold text-neutral-900">Subs</h2>
+          <p className="mt-1 text-sm text-neutral-500">Not drafted. Dress for any team that needs a body.</p>
+          <div className="glass-card mt-4 divide-y divide-black/5 overflow-hidden rounded-3xl">
+            {subs.map((player) => (
+              <Link
+                key={player.id}
+                href={`/players/${player.id}`}
+                className="flex items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-neutral-50/80"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-medium text-neutral-900">{player.name}</span>
+                  <PositionBadge position={player.position} />
+                </div>
+                <span className="shrink-0 rounded-full border border-black/10 px-2.5 py-1 text-xs font-semibold text-neutral-500">Sub</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -698,6 +698,7 @@ function PlayerPool({
   const [name, setName] = useState("");
   const [position, setPosition] = useState<PlayerPosition | "">("");
   const [rank, setRank] = useState("");
+  const [isSub, setIsSub] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -716,12 +717,14 @@ function PlayerPool({
       name,
       position: position || null,
       rank: rank.trim() ? Number(rank) : null,
+      isSub,
     });
     setBusy(false);
     if (!data.ok) return setError(data.error ?? "Couldn't add player");
     setName("");
     setPosition("");
     setRank("");
+    setIsSub(false);
     await refetch();
   };
 
@@ -737,6 +740,11 @@ function PlayerPool({
     if (!data.ok) return setError(data.error ?? "Import failed");
     setBulkText("");
     setBulkMessage(`Imported ${data.count} player${data.count === 1 ? "" : "s"}.`);
+    await refetch();
+  };
+
+  const setSub = async (id: string, value: boolean) => {
+    await postJSON("/api/admin/players", { action: "set-sub", id, isSub: value });
     await refetch();
   };
 
@@ -781,19 +789,25 @@ function PlayerPool({
               placeholder="Rank"
             />
           </div>
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
-          >
-            {busy ? "Adding…" : "Add player"}
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input type="checkbox" checked={isSub} onChange={(e) => setIsSub(e.target.checked)} />
+              Sub — dresses for any team
+            </label>
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+            >
+              {busy ? "Adding…" : "Add player"}
+            </button>
+          </div>
         </form>
 
         <div className="glass-card space-y-3 rounded-3xl p-5">
           <h3 className="text-sm font-semibold text-neutral-900">Bulk import</h3>
           <p className="text-xs text-neutral-500">
-            One per line, optional trailing position (F, D, G, or F/D) and rank — e.g. &ldquo;Mike Smith F 3&rdquo;.
+            One per line, optional trailing position (F, D, G, or F/D), rank, and &ldquo;sub&rdquo; — e.g. &ldquo;Mike Smith F 3&rdquo; or &ldquo;Kyle Shmunk sub&rdquo;.
           </p>
           <textarea
             className="h-28 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
@@ -836,7 +850,14 @@ function PlayerPool({
                   {draftedPlayerIds.has(player.id) ? (
                     <span className="text-xs font-semibold text-neutral-500">Drafted</span>
                   ) : (
-                    <span className="text-xs font-semibold text-emerald-700">Available</span>
+                    <button
+                      type="button"
+                      onClick={() => setSub(player.id, !player.is_sub)}
+                      className={`text-xs font-semibold ${player.is_sub ? "text-neutral-500" : "text-emerald-700"}`}
+                      title={player.is_sub ? "Move back to the draft pool" : "Mark as a standing sub"}
+                    >
+                      {player.is_sub ? "Sub" : "Available"}
+                    </button>
                   )}
                 </td>
                 <td className="px-4 py-3 text-right">
