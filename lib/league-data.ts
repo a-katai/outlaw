@@ -18,6 +18,8 @@ export type SkaterStat = {
   goals: number;
   assists: number;
   points: number;
+  // Penalty minutes. Live/DB seasons only — archives predate penalty tracking.
+  pim?: number;
   // Present only for live/DB-season rows (getSeasonLive) — archive rows have
   // no player id to link to, so this stays undefined for static seasons.
   playerId?: string;

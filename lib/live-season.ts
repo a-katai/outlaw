@@ -326,16 +326,20 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   }));
 
   const gameIds = games.map((g) => g.id);
-  const [statsRes, rostersRes] = await Promise.all([
+  const [statsRes, rostersRes, penaltiesRes] = await Promise.all([
     gameIds.length
       ? supabase.from("game_stats").select("game_id,player_id,team_id,goals,assists").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string; goals: number; assists: number }[] }),
     gameIds.length
       ? supabase.from("game_rosters").select("game_id,player_id,team_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string }[] }),
+    gameIds.length
+      ? supabase.from("penalty_events").select("game_id,player_id,minutes").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; player_id: string | null; minutes: number }[] }),
   ]);
   const gameStats = statsRes.data ?? [];
   const gameRosters = rostersRes.data ?? [];
+  const penaltyRows = penaltiesRes.data ?? [];
 
   const playerIds = Array.from(new Set([...gameStats.map((s) => s.player_id), ...gameRosters.map((r) => r.player_id)]));
   const playersRes = playerIds.length
@@ -404,6 +408,14 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   );
   const skaterAgg = aggregateSkaterStats(finalGameIds, gameDateById, gameStats, gameRosters);
 
+  // PIM: bench penalties carry no player and count toward nobody's line.
+  // A penalized player is checked in by the console, so they're in skaterAgg.
+  const pimByPlayer = new Map<string, number>();
+  for (const p of penaltyRows) {
+    if (!p.player_id || !finalGameIds.has(p.game_id)) continue;
+    pimByPlayer.set(p.player_id, (pimByPlayer.get(p.player_id) ?? 0) + p.minutes);
+  }
+
   const skaters: SkaterStat[] = Array.from(skaterAgg.entries())
     .map(([playerId, agg]) => ({
       playerId,
@@ -413,6 +425,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
       goals: agg.goals,
       assists: agg.assists,
       points: agg.goals + agg.assists,
+      pim: pimByPlayer.get(playerId) ?? 0,
     }))
     .sort((a, b) => b.points - a.points || b.goals - a.goals);
 
