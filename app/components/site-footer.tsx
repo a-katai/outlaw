@@ -24,6 +24,7 @@ const columns = [
     links: [
       { href: "/draft", label: "Draft" },
       { href: "/payments", label: "Dues" },
+      { href: "/scorekeeper", label: "Scorekeeper" },
       { href: "/admin", label: "Admin" },
     ],
   },

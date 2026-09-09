@@ -148,9 +148,21 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const filmMatches = matchGameFilm(videos, { date: game.date, homeTeam: game.homeTeam, awayTeam: game.awayTeam });
 
   const hasLineups = game.lineups.home.length + game.lineups.away.length > 0;
-  const lineupsSection = hasLineups ? (
+  // Unfinished games always get the section: it carries the Keep score button,
+  // and an empty card reads "No lineup submitted yet."
+  const lineupsSection = hasLineups || !isFinal ? (
     <div>
-      <h2 className="text-2xl font-semibold text-neutral-900">Lineups</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold text-neutral-900">Lineups</h2>
+        {!isFinal ? (
+          <Link
+            href={`/scorekeeper/${game.id}`}
+            className="inline-flex items-center rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+          >
+            Keep score
+          </Link>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-5 sm:grid-cols-2">
         <LineupCard teamName={game.awayTeam} players={game.lineups.away} />
         <LineupCard teamName={game.homeTeam} players={game.lineups.home} />
