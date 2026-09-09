@@ -155,7 +155,12 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                 href={`/players/${p.id}`}
                 className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-neutral-50/80"
               >
-                <span className="font-medium text-neutral-900">{p.name}</span>
+                <span className="flex min-w-0 items-center gap-3 font-medium text-neutral-900">
+                  <span className="w-7 shrink-0 text-right text-xs font-semibold tabular-nums text-neutral-400">
+                    {p.jersey != null ? `#${p.jersey}` : ""}
+                  </span>
+                  <span className="truncate">{p.name}</span>
+                </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs text-neutral-500">
                   {p.position ? (
                     <span className="rounded-full border border-black/10 px-2 py-0.5 font-semibold">{p.position}</span>

@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
       .select("id,team_id,scorer_id,assist_id,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
-    supabase.from("players").select("id,name,position,rank").order("name", { ascending: true }),
+    supabase.from("players").select("id,name,position,rank,jersey_number").order("name", { ascending: true }),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
         name: playerById.get(id)?.name ?? "Unknown",
         position: playerById.get(id)?.position ?? null,
         rank: playerById.get(id)?.rank ?? null,
+        jersey: playerById.get(id)?.jersey_number ?? null,
         dressed: dressedSet.has(id),
       }))
       .sort((a, b) => {
@@ -66,7 +67,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ gam
   const homeRoster = rosterFor(game.home_team_id);
   const awayRoster = rosterFor(game.away_team_id);
   const rosteredIds = new Set([...homeRoster.map((p) => p.id), ...awayRoster.map((p) => p.id)]);
-  const playerPool = allPlayers.filter((p) => !rosteredIds.has(p.id));
+  const playerPool = allPlayers
+    .filter((p) => !rosteredIds.has(p.id))
+    .map((p) => ({ id: p.id, name: p.name, position: p.position, rank: p.rank, jersey: p.jersey_number ?? null }));
 
   const goalEvents = goals.map((g) => ({
     id: g.id,

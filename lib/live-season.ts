@@ -22,6 +22,7 @@ export type LiveRosterPlayer = {
   name: string;
   position: string | null;
   rank: number | null;
+  jersey: number | null;
 };
 
 export type GameType = "regular" | "playoff";
@@ -435,14 +436,22 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     const picks = picksRes.data ?? [];
     const rosterPlayerIds = Array.from(new Set(picks.map((p) => p.player_id)));
     const rosterPlayersRes = rosterPlayerIds.length
-      ? await supabase.from("players").select("id,name,position,rank").in("id", rosterPlayerIds)
-      : { data: [] as { id: string; name: string; position: string | null; rank: number | null }[] };
+      ? await supabase.from("players").select("id,name,position,rank,jersey_number").in("id", rosterPlayerIds)
+      : {
+          data: [] as { id: string; name: string; position: string | null; rank: number | null; jersey_number: number | null }[],
+        };
     const rosterPlayerById = new Map((rosterPlayersRes.data ?? []).map((p) => [p.id, p]));
     for (const pick of picks) {
       const teamName = teamNameById.get(pick.team_id);
       const player = rosterPlayerById.get(pick.player_id);
       if (!teamName || !player) continue;
-      rosters[teamName].push({ id: player.id, name: player.name, position: player.position, rank: player.rank });
+      rosters[teamName].push({
+        id: player.id,
+        name: player.name,
+        position: player.position,
+        rank: player.rank,
+        jersey: player.jersey_number ?? null,
+      });
     }
     for (const name of Object.keys(rosters)) rosters[name].sort((a, b) => a.name.localeCompare(b.name));
   }

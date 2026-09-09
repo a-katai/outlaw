@@ -6,8 +6,11 @@ import { getTeamColors } from "@/lib/league-data";
 
 const POLL_MS = 10000;
 
-type RosterPlayer = { id: string; name: string; dressed: boolean };
-type PoolPlayer = { id: string; name: string };
+type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null };
+type PoolPlayer = { id: string; name: string; jersey: number | null };
+
+/** "#55 Tony Katai" when a number is claimed; the bare name otherwise. */
+const label = (p: { name: string; jersey: number | null }) => (p.jersey == null ? p.name : `#${p.jersey} ${p.name}`);
 
 type GoalEvent = {
   id: string;
@@ -175,7 +178,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
           <optgroup label="On the ice">
             {dressed.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {label(p)}
               </option>
             ))}
           </optgroup>
@@ -184,7 +187,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
           <optgroup label="Rest of roster">
             {rest.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {label(p)}
               </option>
             ))}
           </optgroup>
@@ -448,7 +451,10 @@ function LineupColumn({
                   : "border-black/10 bg-white text-neutral-600"
               }`}
             >
-              <span>{p.name}</span>
+              <span>
+                {p.jersey != null ? <span className="mr-2 font-semibold tabular-nums text-neutral-500">#{p.jersey}</span> : null}
+                {p.name}
+              </span>
               <span className="text-xs font-semibold">{p.dressed ? "Dressed" : "Tap to dress"}</span>
             </button>
           ))
@@ -463,7 +469,7 @@ function LineupColumn({
           <option value="">Add player…</option>
           {pool.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}
+              {label(p)}
             </option>
           ))}
         </select>
