@@ -3,10 +3,10 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ScorekeeperLogin() {
+export function ScorekeeperLogin({ initialError = null }: { initialError?: string | null }) {
   const router = useRouter();
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -24,7 +24,9 @@ export function ScorekeeperLogin() {
         setError(data.error ?? "Invalid code");
         return;
       }
-      router.refresh();
+      // Full reload, not router.refresh(): older tablet browsers sometimes
+      // keep showing the form after the cookie lands.
+      window.location.replace("/scorekeeper");
     } catch {
       setError("Couldn't reach the server. Try again.");
     } finally {
@@ -49,6 +51,10 @@ export function ScorekeeperLogin() {
             placeholder="ABC123"
             maxLength={6}
             autoComplete="off"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="text"
             autoFocus
             required
           />

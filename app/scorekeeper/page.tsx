@@ -1,6 +1,7 @@
 import { timeSortKey } from "@/app/components/next-game-card";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
@@ -32,9 +33,15 @@ function TeamPill({ name }: { name: string }) {
   );
 }
 
-export default async function ScorekeeperIndexPage() {
+export default async function ScorekeeperIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string; error?: string }>;
+}) {
+  const { code, error } = await searchParams;
   const authed = await isScorekeeperAuthed();
-  if (!authed) return <ScorekeeperLogin />;
+  if (!authed && code) redirect(`/api/scorekeeper/login?code=${encodeURIComponent(code)}&next=/scorekeeper`);
+  if (!authed) return <ScorekeeperLogin initialError={error ?? null} />;
 
   const season = await getActiveSeasonLive();
   const games = (season?.games ?? [])
