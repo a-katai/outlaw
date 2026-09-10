@@ -6,11 +6,7 @@ import { getTeamColors } from "@/lib/league-data";
 
 const POLL_MS = 10000;
 
-type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null };
-type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: boolean };
-
-/** "#55 Tony Katai" when a number is claimed; the bare name otherwise. */
-const label = (p: { name: string; jersey: number | null }) => (p.jersey == null ? p.name : `#${p.jersey} ${p.name}`);
+import { LineupColumn, authHeaders, label, type PoolPlayer, type RosterPlayer } from "../lineup-column";
 
 type PenaltyEvent = {
   id: string;
@@ -73,10 +69,6 @@ type ConsoleData = {
   goalEvents: GoalEvent[];
   penaltyEvents: PenaltyEvent[];
 };
-
-function authHeaders(code: string | null): HeadersInit {
-  return code ? { "x-scorekeeper-code": code } : {};
-}
 
 async function postAction(gameId: string, body: unknown, code: string | null) {
   const res = await fetch(`/api/scorekeeper/game/${gameId}`, {
@@ -306,6 +298,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
               pool={availablePool}
               busy={busy}
               onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.awayTeamId, playerId, dressed })}
+              onAddNew={(name) => runAction({ action: "add-new-player", teamId: game.awayTeamId, name })}
             />
             <LineupColumn
               teamName={game.homeTeam}
@@ -313,6 +306,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
               pool={availablePool}
               busy={busy}
               onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.homeTeamId, playerId, dressed })}
+              onAddNew={(name) => runAction({ action: "add-new-player", teamId: game.homeTeamId, name })}
             />
           </div>
         </div>
@@ -632,95 +626,5 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
         )}
       </div>
     </section>
-  );
-}
-
-function LineupColumn({
-  teamName,
-  roster,
-  pool,
-  busy,
-  onToggle,
-}: {
-  teamName: string;
-  roster: RosterPlayer[];
-  pool: PoolPlayer[];
-  busy: boolean;
-  onToggle: (playerId: string, dressed: boolean) => void;
-}) {
-  const [addId, setAddId] = useState("");
-  const dressed = roster.filter((p) => p.dressed).length;
-
-  return (
-    <div className="glass-card rounded-3xl p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-        {teamName} · {dressed} dressed
-      </p>
-      <div className="mt-3 space-y-1.5">
-        {roster.length === 0 ? (
-          <p className="text-sm text-neutral-500">No roster yet.</p>
-        ) : (
-          roster.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              disabled={busy}
-              onClick={() => onToggle(p.id, !p.dressed)}
-              className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition disabled:opacity-50 ${
-                p.dressed
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                  : "border-black/10 bg-white text-neutral-600"
-              }`}
-            >
-              <span>
-                {p.jersey != null ? <span className="mr-2 font-semibold tabular-nums text-neutral-500">#{p.jersey}</span> : null}
-                {p.name}
-              </span>
-              <span className="text-xs font-semibold">{p.dressed ? "Dressed" : "Tap to dress"}</span>
-            </button>
-          ))
-        )}
-      </div>
-      <div className="mt-3 flex gap-2">
-        <select
-          value={addId}
-          onChange={(e) => setAddId(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none ring-blue-500/30 focus:ring-4"
-        >
-          <option value="">Add player…</option>
-          {pool.some((p) => p.isSub) ? (
-            <optgroup label="Subs">
-              {pool
-                .filter((p) => p.isSub)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {label(p)}
-                  </option>
-                ))}
-            </optgroup>
-          ) : null}
-          <optgroup label="Rostered elsewhere">
-            {pool
-              .filter((p) => !p.isSub)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {label(p)}
-                </option>
-              ))}
-          </optgroup>
-        </select>
-        <button
-          type="button"
-          disabled={!addId || busy}
-          onClick={() => {
-            onToggle(addId, true);
-            setAddId("");
-          }}
-          className="shrink-0 rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
-        >
-          Add
-        </button>
-      </div>
-    </div>
   );
 }

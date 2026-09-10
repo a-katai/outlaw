@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
+import { isScorekeeperAuthed, teamIdForCode } from "@/lib/scorekeeper-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { recomputeGame } from "@/lib/scorekeeper";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
-  if (!(await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code")))) {
+  // Scorekeepers see everything; a team manager (x-team-code) can read the sheet too.
+  const managerTeamId = await teamIdForCode(req.headers.get("x-team-code"));
+  if (!managerTeamId && !(await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code")))) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -132,10 +134,13 @@ type Body =
   | { action: "reset" }
   | { action: "add-penalty"; teamId: string; playerId: string | null; infraction: string; minutes: number }
   | { action: "remove-penalty"; eventId: string }
+  | { action: "add-new-player"; teamId: string; name: string }
   | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
-  if (!(await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code")))) {
+  const scorekeeper = await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code"));
+  const managerTeamId = scorekeeper ? null : await teamIdForCode(req.headers.get("x-team-code"));
+  if (!scorekeeper && !managerTeamId) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -146,6 +151,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
+  }
+
+  // A manager only touches their own lineup — never the score, never the other bench.
+  if (managerTeamId) {
+    const ownLineup =
+      (body.action === "toggle-player" || body.action === "add-new-player") && body.teamId === managerTeamId;
+    if (!ownLineup) {
+      return NextResponse.json({ ok: false, error: "Managers can only edit their own lineup" }, { status: 403 });
+    }
   }
 
   const supabase = createAdminClient();
@@ -289,6 +303,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         if (rosterError) return NextResponse.json({ ok: false, error: rosterError.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
+    }
+
+    case "add-new-player": {
+      // Someone not in the system at all — a walk-on. They enter as a sub
+      // and are dressed for this game in one step.
+      if (body.teamId !== game.home_team_id && body.teamId !== game.away_team_id) {
+        return NextResponse.json({ ok: false, error: "Invalid team" }, { status: 400 });
+      }
+      const name = body.name?.trim().replace(/\s+/g, " ");
+      if (!name || name.length < 2) return NextResponse.json({ ok: false, error: "Enter the player's name" }, { status: 400 });
+      const { data: existing } = await supabase.from("players").select("id").ilike("name", name).maybeSingle();
+      let playerId = existing?.id ?? null;
+      if (!playerId) {
+        const { data: created, error: createError } = await supabase
+          .from("players")
+          .insert({ name, is_sub: true })
+          .select("id")
+          .single();
+        if (createError) return NextResponse.json({ ok: false, error: createError.message }, { status: 500 });
+        playerId = created.id;
+      }
+      const { error } = await supabase
+        .from("game_rosters")
+        .upsert({ game_id: gameId, player_id: playerId, team_id: body.teamId }, { onConflict: "game_id,player_id", ignoreDuplicates: true });
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, playerId });
     }
 
     case "remove-penalty": {

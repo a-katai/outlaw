@@ -36,6 +36,15 @@ export async function scorekeeperCodeIsValid(
   return { ok: true };
 }
 
+/** Resolves a manager's team code (team_codes) to its team id, or null. */
+export async function teamIdForCode(raw: string | undefined | null): Promise<string | null> {
+  const code = raw?.trim().toUpperCase();
+  if (!code) return null;
+  const supabase = createAdminClient();
+  const { data } = await supabase.from("team_codes").select("team_id").eq("code", code).maybeSingle();
+  return data?.team_id ?? null;
+}
+
 /**
  * A device is in if it holds the session cookie OR presents the code itself
  * (?code= on a page, x-scorekeeper-code on an API call). The second path
