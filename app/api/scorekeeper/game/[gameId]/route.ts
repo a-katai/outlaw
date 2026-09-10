@@ -28,13 +28,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     supabase.from("game_rosters").select("team_id,player_id").eq("game_id", gameId),
     supabase
       .from("goal_events")
-      .select("id,team_id,scorer_id,assist_id,assist2_id,created_at")
+      .select("id,team_id,scorer_id,assist_id,assist2_id,period,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
     supabase.from("players").select("id,name,position,rank,jersey_number,is_sub").order("name", { ascending: true }),
     supabase
       .from("penalty_events")
-      .select("id,team_id,player_id,infraction,minutes,created_at")
+      .select("id,team_id,player_id,infraction,minutes,period,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
   ]);
@@ -88,6 +88,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     assistName: g.assist_id ? (playerById.get(g.assist_id)?.name ?? "Unknown") : null,
     assist2Id: g.assist2_id,
     assist2Name: g.assist2_id ? (playerById.get(g.assist2_id)?.name ?? "Unknown") : null,
+    period: g.period ?? null,
     createdAt: g.created_at,
   }));
 
@@ -98,6 +99,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     playerName: p.player_id ? (playerById.get(p.player_id)?.name ?? "Unknown") : null,
     infraction: p.infraction,
     minutes: p.minutes,
+    period: p.period ?? null,
     createdAt: p.created_at,
   }));
 
@@ -129,15 +131,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
 
 type Body =
   | { action: "start" }
-  | { action: "add-goal"; teamId: string; scorerId: string | null; assistId: string | null; assist2Id?: string | null }
+  | { action: "add-goal"; teamId: string; scorerId: string | null; assistId: string | null; assist2Id?: string | null; period?: number | null }
   | { action: "remove-goal"; eventId: string }
   | { action: "end" }
   | { action: "reopen" }
   | { action: "reset" }
-  | { action: "add-penalty"; teamId: string; playerId: string | null; infraction: string; minutes: number }
+  | { action: "add-penalty"; teamId: string; playerId: string | null; infraction: string; minutes: number; period?: number | null }
   | { action: "remove-penalty"; eventId: string }
   | { action: "add-new-player"; teamId: string; name: string }
   | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
+
+/** 1–3 or 4 (OT); anything else is "not recorded". */
+function periodOf(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 4 ? v : null;
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
   const scorekeeper = await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code"));
@@ -199,7 +206,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         team_id: body.teamId,
         scorer_id: body.scorerId || null,
         assist_id: body.assistId || null,
-        assist2_id: body.assist2Id || null || null,
+        assist2_id: body.assist2Id || null,
+        period: periodOf(body.period),
       });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
@@ -295,6 +303,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         player_id: body.playerId || null,
         infraction,
         minutes,
+        period: periodOf(body.period),
       });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       // A penalized player was on the ice — check them in like a scorer.

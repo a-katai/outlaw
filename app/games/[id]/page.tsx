@@ -6,6 +6,7 @@ import { getTeamColors } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { matchGameFilm } from "@/lib/game-film";
 import { LiveGameFeed } from "./live-game-feed";
+import { GoalList } from "./goal-list";
 import { PenaltyList } from "./penalty-list";
 import { ShareScoreButton } from "./share-score-button";
 import type { VideoItem } from "@/app/components/video-gallery";
@@ -258,6 +259,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       ) : null}
+
+      {isFinal ? <GoalList goals={game.goalEvents} /> : null}
 
       {isFinal ? <PenaltyList penalties={game.penaltyEvents} /> : null}
 

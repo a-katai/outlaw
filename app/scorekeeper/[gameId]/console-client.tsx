@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getTeamColors } from "@/lib/league-data";
 
 const POLL_MS = 10000;
 
-import { LineupColumn, authHeaders, label, type PoolPlayer, type RosterPlayer } from "../lineup-column";
+import { LineupColumn, authHeaders, type PoolPlayer, type RosterPlayer } from "../lineup-column";
 
 type PenaltyEvent = {
   id: string;
@@ -15,6 +15,7 @@ type PenaltyEvent = {
   playerName: string | null;
   infraction: string;
   minutes: number;
+  period: number | null;
   createdAt: string;
 };
 
@@ -46,6 +47,7 @@ type GoalEvent = {
   assistName: string | null;
   assist2Id: string | null;
   assist2Name: string | null;
+  period: number | null;
   createdAt: string;
 };
 
@@ -72,6 +74,59 @@ type ConsoleData = {
   penaltyEvents: PenaltyEvent[];
 };
 
+const PERIODS: { value: number; label: string }[] = [
+  { value: 1, label: "1st" },
+  { value: 2, label: "2nd" },
+  { value: 3, label: "3rd" },
+  { value: 4, label: "OT" },
+];
+
+/** "1st" / "2nd" / "3rd" / "OT" / "—" for an unset period. */
+function periodLabel(period: number | null | undefined): string {
+  return PERIODS.find((p) => p.value === period)?.label ?? "—";
+}
+
+/** Last word of a full name; "Unknown" for a missing name. */
+function surname(name: string | null | undefined): string {
+  if (!name || !name.trim()) return "Unknown";
+  const parts = name.trim().split(/\s+/);
+  return parts[parts.length - 1] ?? name;
+}
+
+/** Jersey number for a player id, looked up against a team roster. */
+function jerseyOf(roster: RosterPlayer[], playerId: string | null): number | null {
+  if (!playerId) return null;
+  return roster.find((p) => p.id === playerId)?.jersey ?? null;
+}
+
+/** "#62 Erickson" when a jersey number is on file; the bare surname otherwise. */
+function playerDisplay(roster: RosterPlayer[], playerId: string | null, name: string | null): string {
+  const jersey = jerseyOf(roster, playerId);
+  const sn = surname(name);
+  return jersey != null ? `#${jersey} ${sn}` : sn;
+}
+
+/**
+ * Sequential goal-pick toggle. `picks[0]` is the scorer (may be null = Unknown),
+ * `picks[1]`/`picks[2]` are the assists (never null). Tapping a selected tile
+ * removes it and shifts later roles down; Unknown may only occupy index 0.
+ */
+function toggleGoalPick(picks: (string | null)[], id: string | null): (string | null)[] {
+  if (id === null) {
+    if (picks.length === 0) return [null];
+    if (picks[0] === null) return picks.slice(1);
+    return picks;
+  }
+  const idx = picks.indexOf(id);
+  if (idx !== -1) {
+    const next = [...picks];
+    next.splice(idx, 1);
+    return next;
+  }
+  if (picks.length >= 3) return picks;
+  return [...picks, id];
+}
+
 async function postAction(gameId: string, body: unknown, code: string | null) {
   const res = await fetch(`/api/scorekeeper/game/${gameId}`, {
     method: "POST",
@@ -93,23 +148,108 @@ function TeamPill({ name }: { name: string }) {
   );
 }
 
+function PeriodChips({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (period: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {PERIODS.map((p) => (
+        <button
+          key={p.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(p.value)}
+          className={`min-h-12 rounded-xl border text-sm font-semibold transition disabled:opacity-50 ${
+            value === p.value
+              ? "border-neutral-900 bg-neutral-900 text-white"
+              : "border-black/10 bg-white text-neutral-700 hover:bg-neutral-50"
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type TileVariant = "idle" | "scorer" | "assist" | "selected";
+
+const TILE_STYLES: Record<TileVariant, string> = {
+  idle: "border-black/10 bg-white text-neutral-900",
+  scorer: "border-neutral-900 bg-neutral-900 text-white",
+  assist: "border-emerald-300 bg-emerald-50 text-emerald-900",
+  selected: "border-neutral-900 bg-neutral-900 text-white",
+};
+
+const TILE_SUB: Record<TileVariant, string> = {
+  idle: "text-neutral-500",
+  scorer: "text-white/80",
+  assist: "text-emerald-700",
+  selected: "text-white/80",
+};
+
+function RosterTile({
+  primary,
+  secondary,
+  badge,
+  variant,
+  disabled,
+  onClick,
+}: {
+  primary: string;
+  secondary: string;
+  badge?: string;
+  variant: TileVariant;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`relative flex min-h-[72px] flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 py-2 text-center transition disabled:opacity-50 ${TILE_STYLES[variant]}`}
+    >
+      {badge ? (
+        <span className="absolute right-1 top-1 rounded-full border border-black/10 bg-white px-1.5 py-0.5 text-[10px] font-bold text-neutral-900">
+          {badge}
+        </span>
+      ) : null}
+      <span className="text-2xl font-semibold tabular-nums">{primary}</span>
+      {secondary ? <span className={`text-[11px] ${TILE_SUB[variant]}`}>{secondary}</span> : null}
+    </button>
+  );
+}
+
+type GoalSheetState = { team: "home" | "away"; picks: (string | null)[]; period: number };
+type PenaltySheetState = {
+  team: "home" | "away";
+  playerId: string | null;
+  infraction: string;
+  minutes: number;
+  period: number;
+};
+
 export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: string | null }) {
   const backHref = code ? `/scorekeeper?code=${encodeURIComponent(code)}` : "/scorekeeper";
   const [data, setData] = useState<ConsoleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pickerTeam, setPickerTeam] = useState<"home" | "away" | null>(null);
-  const [scorerId, setScorerId] = useState("");
-  const [assistId, setAssistId] = useState("");
-  const [assist2Id, setAssist2Id] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [penaltyTeam, setPenaltyTeam] = useState<"home" | "away" | null>(null);
-  const [penaltyPlayerId, setPenaltyPlayerId] = useState("");
-  const [infraction, setInfraction] = useState(INFRACTIONS[0]);
-  const [minutes, setMinutes] = useState(2);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [period, setPeriod] = useState(1);
+  const periodInitialized = useRef(false);
+  const [lineupsOpen, setLineupsOpen] = useState(false);
+  const [goalSheet, setGoalSheet] = useState<GoalSheetState | null>(null);
+  const [penaltySheet, setPenaltySheet] = useState<PenaltySheetState | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -121,6 +261,16 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
       }
       setData(json);
       setError(null);
+      // First load only: pick up where the sheet left off (a reopened or resumed game).
+      if (!periodInitialized.current) {
+        periodInitialized.current = true;
+        const all = [...(json.goalEvents as GoalEvent[]), ...(json.penaltyEvents as PenaltyEvent[])];
+        const latest = all.reduce<GoalEvent | PenaltyEvent | null>(
+          (a, b) => (!a || new Date(b.createdAt).getTime() > new Date(a.createdAt).getTime() ? b : a),
+          null,
+        );
+        if (latest?.period) setPeriod(latest.period);
+      }
     } catch {
       setError("Couldn't reach the server.");
     } finally {
@@ -135,6 +285,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
     const interval = setInterval(load, POLL_MS);
     return () => clearInterval(interval);
   }, [load]);
+
 
   const runAction = async (body: unknown) => {
     setBusy(true);
@@ -151,36 +302,6 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
 
   const startGame = () => runAction({ action: "start" });
 
-  const openPicker = (team: "home" | "away") => {
-    setPickerTeam(team);
-    setScorerId("");
-    setAssistId("");
-    setAssist2Id("");
-    setActionError(null);
-  };
-
-  const closePicker = () => {
-    setPickerTeam(null);
-    setScorerId("");
-    setAssistId("");
-    setAssist2Id("");
-  };
-
-  const confirmGoal = async () => {
-    if (!pickerTeam || !data) return;
-    const teamId = pickerTeam === "home" ? data.game.homeTeamId : data.game.awayTeamId;
-    const ok = await runAction({
-      action: "add-goal",
-      teamId,
-      scorerId: scorerId || null,
-      assistId: assistId || null,
-      assist2Id: assist2Id || null,
-    });
-    if (ok) closePicker();
-  };
-
-  const removeGoal = (eventId: string) => runAction({ action: "remove-goal", eventId });
-
   const endGame = async () => {
     const ok = await runAction({ action: "end" });
     if (ok) setConfirmEnd(false);
@@ -193,24 +314,61 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
     if (ok) setConfirmReset(false);
   };
 
-  const openPenalty = (team: "home" | "away") => {
-    setPenaltyTeam(team);
-    setPenaltyPlayerId("");
-    setInfraction(INFRACTIONS[0]);
-    setMinutes(2);
+  const removeGoal = (eventId: string) => runAction({ action: "remove-goal", eventId });
+  const removePenalty = (eventId: string) => runAction({ action: "remove-penalty", eventId });
+
+  const openGoalSheet = (team: "home" | "away") => {
+    setGoalSheet({ team, picks: [], period });
+    setPenaltySheet(null);
     setActionError(null);
   };
+  const closeGoalSheet = () => setGoalSheet(null);
 
-  const closePenalty = () => setPenaltyTeam(null);
+  const openPenaltySheet = (team: "home" | "away") => {
+    setPenaltySheet({ team, playerId: null, infraction: INFRACTIONS[0], minutes: 2, period });
+    setGoalSheet(null);
+    setActionError(null);
+  };
+  const closePenaltySheet = () => setPenaltySheet(null);
 
-  const confirmPenalty = async () => {
-    if (!penaltyTeam || !data) return;
-    const teamId = penaltyTeam === "home" ? data.game.homeTeamId : data.game.awayTeamId;
-    const ok = await runAction({ action: "add-penalty", teamId, playerId: penaltyPlayerId || null, infraction, minutes });
-    if (ok) closePenalty();
+  const pickGoalTile = (id: string | null) => {
+    setGoalSheet((prev) => (prev ? { ...prev, picks: toggleGoalPick(prev.picks, id) } : prev));
   };
 
-  const removePenalty = (eventId: string) => runAction({ action: "remove-penalty", eventId });
+  const pickPenaltyTile = (id: string | null) => {
+    setPenaltySheet((prev) => (prev ? { ...prev, playerId: prev.playerId === id ? null : id } : prev));
+  };
+
+  const saveGoal = async () => {
+    if (!goalSheet || !data) return;
+    const teamId = goalSheet.team === "home" ? data.game.homeTeamId : data.game.awayTeamId;
+    const scorerId = goalSheet.picks.length > 0 ? goalSheet.picks[0] : null;
+    const assistId = goalSheet.picks.length > 1 ? goalSheet.picks[1] : null;
+    const assist2Id = goalSheet.picks.length > 2 ? goalSheet.picks[2] : null;
+    const ok = await runAction({
+      action: "add-goal",
+      teamId,
+      scorerId,
+      assistId,
+      assist2Id,
+      period,
+    });
+    if (ok) setGoalSheet(null);
+  };
+
+  const savePenalty = async () => {
+    if (!penaltySheet || !data) return;
+    const teamId = penaltySheet.team === "home" ? data.game.homeTeamId : data.game.awayTeamId;
+    const ok = await runAction({
+      action: "add-penalty",
+      teamId,
+      playerId: penaltySheet.playerId,
+      infraction: penaltySheet.infraction,
+      minutes: penaltySheet.minutes,
+      period,
+    });
+    if (ok) setPenaltySheet(null);
+  };
 
   if (loading) {
     return <div className="glass-card rounded-3xl p-10 text-center text-sm text-neutral-500">Loading…</div>;
@@ -231,37 +389,45 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
 
   const { game, roster, playerPool, goalEvents, penaltyEvents } = data;
   const rosterFor = (team: "home" | "away") => (team === "home" ? roster.home : roster.away);
+  const rosterForTeamId = (teamId: string) => (teamId === game.homeTeamId ? roster.home : roster.away);
   const dressedCount = (list: RosterPlayer[]) => list.filter((p) => p.dressed).length;
   const availablePool = playerPool.filter(
     (p) => !roster.home.some((r) => r.id === p.id) && !roster.away.some((r) => r.id === p.id),
   );
 
-  const rosterOptions = (list: RosterPlayer[]) => {
-    const dressed = list.filter((p) => p.dressed);
-    const rest = list.filter((p) => !p.dressed);
-    return (
-      <>
-        {dressed.length ? (
-          <optgroup label="On the ice">
-            {dressed.map((p) => (
-              <option key={p.id} value={p.id}>
-                {label(p)}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-        {rest.length ? (
-          <optgroup label="Rest of roster">
-            {rest.map((p) => (
-              <option key={p.id} value={p.id}>
-                {label(p)}
-              </option>
-            ))}
-          </optgroup>
-        ) : null}
-      </>
-    );
+  // Chronological sheet: goals + penalties merged, newest first. Goal ordinals
+  // are numbered by their true chronological order (ascending), independent of
+  // display order.
+  const goalOrdinal = new Map(
+    [...goalEvents]
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((g, i) => [g.id, i + 1] as const),
+  );
+  type SheetRow = { kind: "goal"; event: GoalEvent } | { kind: "penalty"; event: PenaltyEvent };
+  const sheetRows: SheetRow[] = [
+    ...goalEvents.map((event): SheetRow => ({ kind: "goal", event })),
+    ...penaltyEvents.map((event): SheetRow => ({ kind: "penalty", event })),
+  ].sort((a, b) => new Date(b.event.createdAt).getTime() - new Date(a.event.createdAt).getTime());
+
+  const goalTeamName = goalSheet ? (goalSheet.team === "home" ? game.homeTeam : game.awayTeam) : "";
+  const goalColors = goalSheet ? getTeamColors(goalTeamName) : null;
+  const goalFullRoster = goalSheet ? rosterFor(goalSheet.team) : [];
+  const goalDressed = goalFullRoster.filter((p) => p.dressed);
+  const goalTiles = goalDressed.length ? goalDressed : goalFullRoster;
+  const goalShowFullNote = goalDressed.length === 0 && goalFullRoster.length > 0;
+
+  const goalPlayerPreview = (id: string | null): string => {
+    if (id === null) return "Unknown";
+    const p = goalFullRoster.find((x) => x.id === id);
+    if (!p) return "Unknown";
+    return p.jersey != null ? `#${p.jersey} ${surname(p.name)}` : surname(p.name);
   };
+
+  const penaltyTeamName = penaltySheet ? (penaltySheet.team === "home" ? game.homeTeam : game.awayTeam) : "";
+  const penaltyFullRoster = penaltySheet ? rosterFor(penaltySheet.team) : [];
+  const penaltyDressed = penaltyFullRoster.filter((p) => p.dressed);
+  const penaltyTiles = penaltyDressed.length ? penaltyDressed : penaltyFullRoster;
+  const penaltyShowFullNote = penaltyDressed.length === 0 && penaltyFullRoster.length > 0;
 
   return (
     <section className="space-y-6 pb-16">
@@ -282,7 +448,9 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
           </div>
         </div>
         <p className="mt-4 text-6xl font-semibold text-neutral-900">
-          {game.awayScore ?? 0}<span className="mx-2 text-neutral-300">–</span>{game.homeScore ?? 0}
+          {game.awayScore ?? 0}
+          <span className="mx-2 text-neutral-300">–</span>
+          {game.homeScore ?? 0}
         </p>
         <span
           className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
@@ -297,9 +465,18 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
         </span>
       </div>
 
+      {game.status === "live" || game.status === "final" ? (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Period</p>
+          <div className="mt-2">
+            <PeriodChips value={period} onChange={setPeriod} />
+          </div>
+        </div>
+      ) : null}
+
       {actionError ? <p className="text-center text-sm font-medium text-rose-600">{actionError}</p> : null}
 
-      {game.status === "scheduled" || game.status === "live" ? (
+      {game.status === "scheduled" ? (
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">Lineups</h2>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -328,7 +505,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
           type="button"
           disabled={busy}
           onClick={startGame}
-          className="w-full rounded-2xl bg-neutral-900 px-4 py-5 text-lg font-semibold text-white transition hover:bg-black disabled:opacity-50"
+          className="min-h-14 w-full rounded-2xl bg-neutral-900 px-4 py-5 text-lg font-semibold text-white transition hover:bg-black disabled:opacity-50"
         >
           {busy ? "Starting…" : "Start game"}
         </button>
@@ -336,78 +513,95 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
 
       {game.status === "live" ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => openPicker("away")}
-              className="rounded-2xl bg-neutral-900 px-3 py-5 text-base font-semibold text-white transition hover:bg-black disabled:opacity-50"
-            >
-              + Goal {game.awayTeam}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => openPicker("home")}
-              className="rounded-2xl bg-neutral-900 px-3 py-5 text-base font-semibold text-white transition hover:bg-black disabled:opacity-50"
-            >
-              + Goal {game.homeTeam}
-            </button>
-          </div>
+          {!goalSheet && !penaltySheet ? (
+            <div className="grid grid-cols-2 gap-3">
+              {(["away", "home"] as const).map((team) => {
+                const teamName = team === "home" ? game.homeTeam : game.awayTeam;
+                const colors = getTeamColors(teamName);
+                return (
+                  <div key={team} className="space-y-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openGoalSheet(team)}
+                      className="min-h-16 w-full rounded-2xl border px-3 py-3 text-base font-semibold transition disabled:opacity-50"
+                      style={{ backgroundColor: colors.background, color: colors.text, borderColor: colors.border }}
+                    >
+                      Goal · {teamName}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openPenaltySheet(team)}
+                      className="min-h-12 w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                    >
+                      Penalty
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
-          {pickerTeam ? (
-            <div className="glass-card space-y-3 rounded-3xl p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                Goal — {pickerTeam === "home" ? game.homeTeam : game.awayTeam}
-              </p>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium text-neutral-700">Scorer</span>
-                <select
-                  value={scorerId}
-                  onChange={(e) => setScorerId(e.target.value)}
-                  className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                >
-                  <option value="">Unknown / other</option>
-                  {rosterOptions(rosterFor(pickerTeam))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium text-neutral-700">Assist</span>
-                  <select
-                    value={assistId}
-                    onChange={(e) => setAssistId(e.target.value)}
-                    className="min-w-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                  >
-                    <option value="">None</option>
-                    {rosterOptions(rosterFor(pickerTeam))}
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium text-neutral-700">2nd assist</span>
-                  <select
-                    value={assist2Id}
-                    onChange={(e) => setAssist2Id(e.target.value)}
-                    className="min-w-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                  >
-                    <option value="">None</option>
-                    {rosterOptions(rosterFor(pickerTeam))}
-                  </select>
-                </label>
+          {goalSheet && goalColors ? (
+            <div
+              className="glass-card space-y-4 rounded-3xl border-l-4 p-5"
+              style={{ borderLeftColor: goalColors.border }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Goal — {goalTeamName}</p>
+              {goalShowFullNote ? (
+                <p className="text-xs font-medium text-amber-700">No lineup set — showing full roster</p>
+              ) : null}
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                {goalTiles.map((p) => {
+                  const idx = goalSheet.picks.indexOf(p.id);
+                  const variant: TileVariant = idx === 0 ? "scorer" : idx === 1 || idx === 2 ? "assist" : "idle";
+                  const badge = idx === 0 ? "G" : idx === 1 ? "A1" : idx === 2 ? "A2" : undefined;
+                  return (
+                    <RosterTile
+                      key={p.id}
+                      primary={p.jersey != null ? String(p.jersey) : surname(p.name)}
+                      secondary={p.jersey != null ? surname(p.name) : ""}
+                      badge={badge}
+                      variant={variant}
+                      disabled={busy}
+                      onClick={() => pickGoalTile(p.id)}
+                    />
+                  );
+                })}
+                <RosterTile
+                  primary="?"
+                  secondary="Unknown"
+                  variant={goalSheet.picks[0] === null ? "scorer" : "idle"}
+                  badge={goalSheet.picks[0] === null ? "G" : undefined}
+                  disabled={busy}
+                  onClick={() => pickGoalTile(null)}
+                />
               </div>
-              <div className="flex gap-2">
+              {goalSheet.picks.length === 0 ? (
+                <p className="text-sm text-neutral-500">Tap a player to set the scorer.</p>
+              ) : (
+                <p className="text-sm text-neutral-600">
+                  {goalPlayerPreview(goalSheet.picks[0])} ←{" "}
+                  {goalSheet.picks.length > 1
+                    ? goalSheet.picks.slice(1).map((id) => goalPlayerPreview(id)).join(", ")
+                    : "unassisted"}{" "}
+                  · {periodLabel(period)}
+                </p>
+              )}
+              <div className="flex gap-3">
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={confirmGoal}
-                  className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                  disabled={busy || goalSheet.picks.length === 0}
+                  onClick={saveGoal}
+                  className="min-h-14 flex-1 rounded-xl bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
                 >
-                  {busy ? "Logging…" : "Confirm goal"}
+                  {busy ? "Saving…" : "Save goal"}
                 </button>
                 <button
                   type="button"
-                  onClick={closePicker}
-                  className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                  onClick={closeGoalSheet}
+                  className="min-h-14 rounded-xl px-4 text-sm font-semibold text-neutral-500 transition hover:text-neutral-900"
                 >
                   Cancel
                 </button>
@@ -415,90 +609,123 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => openPenalty("away")}
-              className="rounded-2xl border border-black/10 bg-white px-3 py-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
-            >
-              Penalty {game.awayTeam}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => openPenalty("home")}
-              className="rounded-2xl border border-black/10 bg-white px-3 py-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-50"
-            >
-              Penalty {game.homeTeam}
-            </button>
-          </div>
-
-          {penaltyTeam ? (
-            <div className="glass-card space-y-3 rounded-3xl p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                Penalty — {penaltyTeam === "home" ? game.homeTeam : game.awayTeam}
-              </p>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium text-neutral-700">Player</span>
-                <select
-                  value={penaltyPlayerId}
-                  onChange={(e) => setPenaltyPlayerId(e.target.value)}
-                  className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                >
-                  <option value="">Bench / unknown</option>
-                  {rosterOptions(rosterFor(penaltyTeam))}
-                </select>
-              </label>
-              <div className="grid grid-cols-[1fr_auto] gap-3">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium text-neutral-700">Infraction</span>
-                  <select
-                    value={infraction}
-                    onChange={(e) => setInfraction(e.target.value)}
-                    className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                  >
-                    {INFRACTIONS.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="font-medium text-neutral-700">Minutes</span>
-                  <select
-                    value={minutes}
-                    onChange={(e) => setMinutes(Number(e.target.value))}
-                    className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                  >
-                    {MINUTE_OPTIONS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+          {penaltySheet ? (
+            <div className="glass-card space-y-4 rounded-3xl p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Penalty — {penaltyTeamName}</p>
+              {penaltyShowFullNote ? (
+                <p className="text-xs font-medium text-amber-700">No lineup set — showing full roster</p>
+              ) : null}
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                {penaltyTiles.map((p) => (
+                  <RosterTile
+                    key={p.id}
+                    primary={p.jersey != null ? String(p.jersey) : surname(p.name)}
+                    secondary={p.jersey != null ? surname(p.name) : ""}
+                    variant={penaltySheet.playerId === p.id ? "selected" : "idle"}
+                    disabled={busy}
+                    onClick={() => pickPenaltyTile(p.id)}
+                  />
+                ))}
+                <RosterTile
+                  primary="—"
+                  secondary="Bench"
+                  variant={penaltySheet.playerId === null ? "selected" : "idle"}
+                  disabled={busy}
+                  onClick={() => pickPenaltyTile(null)}
+                />
               </div>
-              <div className="flex gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Infraction</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {INFRACTIONS.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setPenaltySheet((prev) => (prev ? { ...prev, infraction: name } : prev))}
+                      className={`min-h-12 rounded-full border px-4 text-sm font-semibold transition disabled:opacity-50 ${
+                        penaltySheet.infraction === name
+                          ? "border-neutral-900 bg-neutral-900 text-white"
+                          : "border-black/10 bg-white text-neutral-700 hover:bg-neutral-50"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Minutes</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {MINUTE_OPTIONS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setPenaltySheet((prev) => (prev ? { ...prev, minutes: m } : prev))}
+                      className={`min-h-12 min-w-16 rounded-full border px-4 text-sm font-semibold transition disabled:opacity-50 ${
+                        penaltySheet.minutes === m
+                          ? "border-neutral-900 bg-neutral-900 text-white"
+                          : "border-black/10 bg-white text-neutral-700 hover:bg-neutral-50"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3">
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={confirmPenalty}
-                  className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                  onClick={savePenalty}
+                  className="min-h-14 flex-1 rounded-xl bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
                 >
-                  {busy ? "Logging…" : "Log penalty"}
+                  {busy ? "Saving…" : "Save penalty"}
                 </button>
                 <button
                   type="button"
-                  onClick={closePenalty}
-                  className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                  onClick={closePenaltySheet}
+                  className="min-h-14 rounded-xl px-4 text-sm font-semibold text-neutral-500 transition hover:text-neutral-900"
                 >
                   Cancel
                 </button>
               </div>
             </div>
           ) : null}
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setLineupsOpen((v) => !v)}
+              className="flex min-h-12 w-full items-center justify-between rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+            >
+              <span>
+                Lineups · {dressedCount(roster.away)} / {dressedCount(roster.home)} dressed
+              </span>
+              <span>{lineupsOpen ? "▾" : "▸"}</span>
+            </button>
+            {lineupsOpen ? (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <LineupColumn
+                  teamName={game.awayTeam}
+                  roster={roster.away}
+                  pool={availablePool}
+                  busy={busy}
+                  onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.awayTeamId, playerId, dressed })}
+                  onAddNew={(name) => runAction({ action: "add-new-player", teamId: game.awayTeamId, name })}
+                />
+                <LineupColumn
+                  teamName={game.homeTeam}
+                  roster={roster.home}
+                  pool={availablePool}
+                  busy={busy}
+                  onToggle={(playerId, dressed) => runAction({ action: "toggle-player", teamId: game.homeTeamId, playerId, dressed })}
+                  onAddNew={(name) => runAction({ action: "add-new-player", teamId: game.homeTeamId, name })}
+                />
+              </div>
+            ) : null}
+          </div>
 
           {confirmEnd ? (
             <div className="flex gap-2">
@@ -506,14 +733,14 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
                 type="button"
                 disabled={busy}
                 onClick={endGame}
-                className="flex-1 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                className="min-h-12 flex-1 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
               >
                 Confirm end game
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmEnd(false)}
-                className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                className="min-h-12 rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
               >
                 Cancel
               </button>
@@ -522,12 +749,11 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
             <button
               type="button"
               onClick={() => setConfirmEnd(true)}
-              className="w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+              className="min-h-12 w-full rounded-xl border border-rose-200 bg-rose-50 px-4 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
             >
               End game
             </button>
           )}
-
         </div>
       ) : null}
 
@@ -536,119 +762,112 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
           type="button"
           disabled={busy}
           onClick={reopenGame}
-          className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+          className="min-h-14 w-full rounded-2xl bg-neutral-900 px-4 text-lg font-semibold text-white transition hover:bg-black disabled:opacity-50"
         >
-          {busy ? "Reopening…" : "Reopen game"}
+          {busy ? "Reopening…" : "Edit sheet"}
         </button>
       ) : null}
 
       {game.status === "live" || game.status === "final" ? (
         <div className="space-y-3">
-        {confirmReset ? (
-          <div className="glass-card space-y-3 rounded-3xl p-5">
-            <p className="text-sm text-neutral-700">
-              Are you sure? This puts the game back to <span className="font-semibold">scheduled</span> and erases every goal
-              and penalty on the sheet. Lineups stay. There is no undo.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={resetGame}
-                className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
-              >
-                {busy ? "Resetting…" : "Yes, reset the game"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmReset(false)}
-                className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
-              >
-                Cancel
-              </button>
+          {confirmReset ? (
+            <div className="glass-card space-y-3 rounded-3xl p-5">
+              <p className="text-sm text-neutral-700">
+                Are you sure? This puts the game back to <span className="font-semibold">scheduled</span> and erases every goal
+                and penalty on the sheet. Lineups stay. There is no undo.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={resetGame}
+                  className="min-h-12 flex-1 rounded-xl bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+                >
+                  {busy ? "Resetting…" : "Yes, reset the game"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(false)}
+                  className="min-h-12 rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmReset(true)}
-            className="w-full text-center text-xs font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
-          >
-            Reset game
-          </button>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmReset(true)}
+              className="min-h-12 w-full text-center text-xs font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
+            >
+              Reset game
+            </button>
+          )}
         </div>
       ) : null}
 
-      <div>
-        <h2 className="text-lg font-semibold text-neutral-900">Goals</h2>
-        {goalEvents.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-500">No goals logged yet.</p>
-        ) : (
-          <div className="glass-card mt-3 divide-y divide-black/5 overflow-hidden rounded-3xl">
-            {[...goalEvents]
-              .reverse()
-              .map((g) => {
-                const ordinal = goalEvents.findIndex((e) => e.id === g.id) + 1;
-                const teamName = g.teamId === game.homeTeamId ? game.homeTeam : game.awayTeam;
+      {game.status === "live" || game.status === "final" ? (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Sheet</p>
+          {sheetRows.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500">Nothing on the sheet yet.</p>
+          ) : (
+            <div className="glass-card mt-3 divide-y divide-black/5 overflow-hidden rounded-3xl">
+              {sheetRows.map((row) => {
+                const teamName = row.event.teamId === game.homeTeamId ? game.homeTeam : game.awayTeam;
+                const colors = getTeamColors(teamName);
+                const teamRoster = rosterForTeamId(row.event.teamId);
                 return (
-                  <div key={g.id} className="flex items-center justify-between gap-3 px-5 py-4">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">
-                        Goal #{ordinal} — {teamName}
-                      </p>
-                      <p className="text-sm text-neutral-500">
-                        {g.scorerName ?? "Unknown"}
-                        {g.assistName ? ` (${g.assistName}${g.assist2Name ? `, ${g.assist2Name}` : ""})` : ""}
-                      </p>
+                  <div key={row.event.id} className="flex items-stretch gap-3 px-4 py-3">
+                    <div className="w-[3px] shrink-0 rounded-full" style={{ backgroundColor: colors.border }} />
+                    <div className="min-w-0 flex-1">
+                      {row.kind === "goal" ? (
+                        <>
+                          <p className="text-sm font-semibold text-neutral-900">
+                            <span className="font-medium text-neutral-500">{teamName} · {periodLabel(row.event.period)} · </span>
+                            {playerDisplay(teamRoster, row.event.scorerId, row.event.scorerName)}{" "}
+                            <span className="ml-1 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-500">
+                              G{goalOrdinal.get(row.event.id)}
+                            </span>
+                          </p>
+                          <p className="text-sm text-neutral-500">
+                            {row.event.assistId || row.event.assistName
+                              ? `← ${playerDisplay(teamRoster, row.event.assistId, row.event.assistName)}${
+                                  row.event.assist2Id || row.event.assist2Name
+                                    ? `, ${playerDisplay(teamRoster, row.event.assist2Id, row.event.assist2Name)}`
+                                    : ""
+                                }`
+                              : "unassisted"}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-semibold text-neutral-900">
+                            <span className="font-medium text-neutral-500">{teamName} · {periodLabel(row.event.period)} · </span>
+                            {playerDisplay(teamRoster, row.event.playerId, row.event.playerName)}{" "}
+                            <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">PEN</span>
+                          </p>
+                          <p className="text-sm text-neutral-500">
+                            {row.event.infraction} · {row.event.minutes} min
+                          </p>
+                        </>
+                      )}
                     </div>
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => removeGoal(g.id)}
-                      className="shrink-0 text-xs font-medium text-neutral-500 hover:text-rose-600 disabled:opacity-50"
+                      onClick={() => (row.kind === "goal" ? removeGoal(row.event.id) : removePenalty(row.event.id))}
+                      className="min-h-11 shrink-0 text-xs font-medium text-neutral-500 hover:text-rose-600 disabled:opacity-50"
                     >
                       Remove
                     </button>
                   </div>
                 );
               })}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold text-neutral-900">Penalties</h2>
-        {penaltyEvents.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-500">No penalties logged.</p>
-        ) : (
-          <div className="glass-card mt-3 divide-y divide-black/5 overflow-hidden rounded-3xl">
-            {[...penaltyEvents].reverse().map((p) => {
-              const teamName = p.teamId === game.homeTeamId ? game.homeTeam : game.awayTeam;
-              return (
-                <div key={p.id} className="flex items-center justify-between gap-3 px-5 py-4">
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-900">
-                      {teamName} — {p.playerName ?? "Bench"}
-                    </p>
-                    <p className="text-sm text-neutral-500">
-                      {p.infraction} · {p.minutes} min
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => removePenalty(p.id)}
-                    className="shrink-0 text-xs font-medium text-neutral-500 hover:text-rose-600 disabled:opacity-50"
-                  >
-                    Remove
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

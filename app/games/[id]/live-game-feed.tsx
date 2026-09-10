@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { GameStatus, GoalEventLine, PenaltyEventLine } from "@/lib/live-season";
+import { GoalList } from "./goal-list";
 import { PenaltyList } from "./penalty-list";
 
 const POLL_MS = 15000;
@@ -88,29 +89,7 @@ export function LiveGameFeed({
         </div>
       </div>
 
-      {state.goalEvents.length > 0 ? (
-        <div>
-          <h2 className="text-2xl font-semibold text-neutral-900">Goals</h2>
-          <div className="glass-card mt-4 divide-y divide-black/5 overflow-hidden rounded-3xl">
-            {state.goalEvents.map((g, i) => (
-              <div key={g.id} className="flex items-center gap-4 px-5 py-4">
-                <span className="w-6 shrink-0 text-xs font-semibold text-neutral-400">#{i + 1}</span>
-                <div>
-                  <p className="font-semibold text-neutral-900">
-                    {g.teamName} · {g.scorerName ?? "Unknown"}
-                  </p>
-                  {g.assistName ? (
-                    <p className="text-sm text-neutral-500">
-                      {g.assist2Name ? "Assists" : "Assist"}: {g.assistName}
-                      {g.assist2Name ? `, ${g.assist2Name}` : ""}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <GoalList goals={state.goalEvents} />
 
       <PenaltyList penalties={state.penaltyEvents} />
     </>

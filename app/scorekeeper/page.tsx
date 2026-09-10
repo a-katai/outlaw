@@ -43,13 +43,18 @@ export default async function ScorekeeperIndexPage({
   const carry = code ? `?code=${encodeURIComponent(code.trim().toUpperCase())}` : "";
 
   const season = await getActiveSeasonLive();
+  const byNight = (a: LiveGame, b: LiveGame) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return timeSortKey(a.time) - timeSortKey(b.time); // same night: 10:00 B before 10:30 A
+  };
   const games = (season?.games ?? [])
     .filter((g) => g.status === "scheduled" || g.status === "live")
     .sort((a, b) => {
       if (a.status !== b.status) return a.status === "live" ? -1 : 1;
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      return timeSortKey(a.time) - timeSortKey(b.time); // same night: 10:00 B before 10:30 A
+      return byNight(a, b);
     });
+  // Finished games stay reachable so a sheet can be corrected after the night — most recent first.
+  const finished = (season?.games ?? []).filter((g) => g.status === "final").sort((a, b) => byNight(b, a)).slice(0, 6);
 
   return (
     <section className="space-y-6">
@@ -102,6 +107,33 @@ export default async function ScorekeeperIndexPage({
           ))}
         </div>
       )}
+
+      {finished.length ? (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Finished · tap to correct a sheet</p>
+          <div className="mt-3 space-y-2">
+            {finished.map((g: LiveGame) => (
+              <Link
+                key={g.id}
+                href={`/scorekeeper/${g.id}${carry}`}
+                className="glass-card lift flex items-center justify-between gap-4 rounded-2xl px-5 py-4"
+              >
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TeamPill name={g.awayTeam} />
+                    <span className="text-neutral-400">at</span>
+                    <TeamPill name={g.homeTeam} />
+                  </div>
+                  <p className="text-xs text-neutral-500">{formatGameDate(g.date)}</p>
+                </div>
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-700">
+                  {g.awayScore ?? 0}–{g.homeScore ?? 0}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

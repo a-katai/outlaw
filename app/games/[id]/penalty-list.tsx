@@ -1,4 +1,5 @@
 import type { PenaltyEventLine } from "@/lib/live-season";
+import { periodLabel } from "@/lib/periods";
 
 /** Penalty log for a game page — same card language as the goal feed. Renders nothing when empty. */
 export function PenaltyList({ penalties }: { penalties: PenaltyEventLine[] }) {
@@ -13,7 +14,10 @@ export function PenaltyList({ penalties }: { penalties: PenaltyEventLine[] }) {
               <p className="font-semibold text-neutral-900">
                 {p.teamName} · {p.playerName ?? "Bench"}
               </p>
-              <p className="text-sm text-neutral-500">{p.infraction}</p>
+              <p className="text-sm text-neutral-500">
+                {periodLabel(p.period) ? `${periodLabel(p.period)} · ` : ""}
+                {p.infraction}
+              </p>
             </div>
             <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-500">{p.minutes} min</span>
           </div>

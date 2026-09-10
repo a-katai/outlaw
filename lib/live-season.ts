@@ -549,6 +549,7 @@ export type GoalEventLine = {
   scorerName: string | null;
   assistName: string | null;
   assist2Name: string | null;
+  period: number | null;
   createdAt: string;
 };
 
@@ -559,6 +560,7 @@ export type PenaltyEventLine = {
   playerName: string | null; // null = bench penalty
   infraction: string;
   minutes: number;
+  period: number | null;
   createdAt: string;
 };
 
@@ -605,7 +607,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     supabase.from("game_stats").select("player_id,team_id,goals,assists").eq("game_id", id),
     supabase
       .from("goal_events")
-      .select("id,team_id,scorer_id,assist_id,assist2_id,created_at")
+      .select("id,team_id,scorer_id,assist_id,assist2_id,period,created_at")
       .eq("game_id", id)
       .order("created_at", { ascending: true }),
     supabase.from("game_rosters").select("player_id,team_id").eq("game_id", id),
@@ -614,7 +616,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
       : Promise.resolve({ data: null as { id: string; round: number; name: string } | null }),
     supabase
       .from("penalty_events")
-      .select("id,team_id,player_id,infraction,minutes,created_at")
+      .select("id,team_id,player_id,infraction,minutes,period,created_at")
       .eq("game_id", id)
       .order("created_at", { ascending: true }),
   ]);
@@ -664,6 +666,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     scorerName: g.scorer_id ? (playerNameById.get(g.scorer_id) ?? "Unknown") : null,
     assistName: g.assist_id ? (playerNameById.get(g.assist_id) ?? "Unknown") : null,
     assist2Name: g.assist2_id ? (playerNameById.get(g.assist2_id) ?? "Unknown") : null,
+    period: g.period ?? null,
     createdAt: g.created_at,
   }));
 
@@ -674,6 +677,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     playerName: p.player_id ? (playerNameById.get(p.player_id) ?? "Unknown") : null,
     infraction: p.infraction,
     minutes: p.minutes,
+    period: p.period ?? null,
     createdAt: p.created_at,
   }));
 
