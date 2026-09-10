@@ -44,6 +44,8 @@ type GoalEvent = {
   scorerName: string | null;
   assistId: string | null;
   assistName: string | null;
+  assist2Id: string | null;
+  assist2Name: string | null;
   createdAt: string;
 };
 
@@ -100,6 +102,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
   const [pickerTeam, setPickerTeam] = useState<"home" | "away" | null>(null);
   const [scorerId, setScorerId] = useState("");
   const [assistId, setAssistId] = useState("");
+  const [assist2Id, setAssist2Id] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [penaltyTeam, setPenaltyTeam] = useState<"home" | "away" | null>(null);
@@ -152,6 +155,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
     setPickerTeam(team);
     setScorerId("");
     setAssistId("");
+    setAssist2Id("");
     setActionError(null);
   };
 
@@ -159,12 +163,19 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
     setPickerTeam(null);
     setScorerId("");
     setAssistId("");
+    setAssist2Id("");
   };
 
   const confirmGoal = async () => {
     if (!pickerTeam || !data) return;
     const teamId = pickerTeam === "home" ? data.game.homeTeamId : data.game.awayTeamId;
-    const ok = await runAction({ action: "add-goal", teamId, scorerId: scorerId || null, assistId: assistId || null });
+    const ok = await runAction({
+      action: "add-goal",
+      teamId,
+      scorerId: scorerId || null,
+      assistId: assistId || null,
+      assist2Id: assist2Id || null,
+    });
     if (ok) closePicker();
   };
 
@@ -360,17 +371,30 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
                   {rosterOptions(rosterFor(pickerTeam))}
                 </select>
               </label>
-              <label className="grid gap-1.5 text-sm">
-                <span className="font-medium text-neutral-700">Assist (optional)</span>
-                <select
-                  value={assistId}
-                  onChange={(e) => setAssistId(e.target.value)}
-                  className="rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
-                >
-                  <option value="">None</option>
-                  {rosterOptions(rosterFor(pickerTeam))}
-                </select>
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-neutral-700">Assist</span>
+                  <select
+                    value={assistId}
+                    onChange={(e) => setAssistId(e.target.value)}
+                    className="min-w-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
+                  >
+                    <option value="">None</option>
+                    {rosterOptions(rosterFor(pickerTeam))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">
+                  <span className="font-medium text-neutral-700">2nd assist</span>
+                  <select
+                    value={assist2Id}
+                    onChange={(e) => setAssist2Id(e.target.value)}
+                    className="min-w-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base outline-none ring-blue-500/30 focus:ring-4"
+                  >
+                    <option value="">None</option>
+                    {rosterOptions(rosterFor(pickerTeam))}
+                  </select>
+                </label>
+              </div>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -575,7 +599,7 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
                       </p>
                       <p className="text-sm text-neutral-500">
                         {g.scorerName ?? "Unknown"}
-                        {g.assistName ? ` (${g.assistName})` : ""}
+                        {g.assistName ? ` (${g.assistName}${g.assist2Name ? `, ${g.assist2Name}` : ""})` : ""}
                       </p>
                     </div>
                     <button

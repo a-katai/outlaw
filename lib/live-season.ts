@@ -548,6 +548,7 @@ export type GoalEventLine = {
   teamName: string;
   scorerName: string | null;
   assistName: string | null;
+  assist2Name: string | null;
   createdAt: string;
 };
 
@@ -604,7 +605,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     supabase.from("game_stats").select("player_id,team_id,goals,assists").eq("game_id", id),
     supabase
       .from("goal_events")
-      .select("id,team_id,scorer_id,assist_id,created_at")
+      .select("id,team_id,scorer_id,assist_id,assist2_id,created_at")
       .eq("game_id", id)
       .order("created_at", { ascending: true }),
     supabase.from("game_rosters").select("player_id,team_id").eq("game_id", id),
@@ -633,6 +634,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
       ...penaltyRows.map((p) => p.player_id).filter((v): v is string => Boolean(v)),
       ...goalRows.map((g) => g.scorer_id).filter((v): v is string => Boolean(v)),
       ...goalRows.map((g) => g.assist_id).filter((v): v is string => Boolean(v)),
+      ...goalRows.map((g) => g.assist2_id).filter((v): v is string => Boolean(v)),
       ...rosterRows.map((r) => r.player_id),
     ]),
   );
@@ -661,6 +663,7 @@ export const getGameDetail = cache(async (id: string): Promise<GameDetail | null
     teamName: teamNameById.get(g.team_id) ?? "Unknown",
     scorerName: g.scorer_id ? (playerNameById.get(g.scorer_id) ?? "Unknown") : null,
     assistName: g.assist_id ? (playerNameById.get(g.assist_id) ?? "Unknown") : null,
+    assist2Name: g.assist2_id ? (playerNameById.get(g.assist2_id) ?? "Unknown") : null,
     createdAt: g.created_at,
   }));
 

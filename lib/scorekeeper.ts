@@ -24,7 +24,7 @@ export async function recomputeGame(
 
   const { data: eventsData } = await supabase
     .from("goal_events")
-    .select("team_id,scorer_id,assist_id")
+    .select("team_id,scorer_id,assist_id,assist2_id")
     .eq("game_id", gameId);
   const events = eventsData ?? [];
 
@@ -42,11 +42,12 @@ export async function recomputeGame(
       cur.teamId = e.team_id;
       aggByPlayer.set(e.scorer_id, cur);
     }
-    if (e.assist_id) {
-      const cur = aggByPlayer.get(e.assist_id) ?? { teamId: e.team_id, goals: 0, assists: 0 };
+    for (const assistId of [e.assist_id, e.assist2_id]) {
+      if (!assistId) continue;
+      const cur = aggByPlayer.get(assistId) ?? { teamId: e.team_id, goals: 0, assists: 0 };
       cur.assists += 1;
       cur.teamId = e.team_id;
-      aggByPlayer.set(e.assist_id, cur);
+      aggByPlayer.set(assistId, cur);
     }
   }
 

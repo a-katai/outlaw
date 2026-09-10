@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     supabase.from("game_rosters").select("team_id,player_id").eq("game_id", gameId),
     supabase
       .from("goal_events")
-      .select("id,team_id,scorer_id,assist_id,created_at")
+      .select("id,team_id,scorer_id,assist_id,assist2_id,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
     supabase.from("players").select("id,name,position,rank,jersey_number,is_sub").order("name", { ascending: true }),
@@ -86,6 +86,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
     scorerName: g.scorer_id ? (playerById.get(g.scorer_id)?.name ?? "Unknown") : null,
     assistId: g.assist_id,
     assistName: g.assist_id ? (playerById.get(g.assist_id)?.name ?? "Unknown") : null,
+    assist2Id: g.assist2_id,
+    assist2Name: g.assist2_id ? (playerById.get(g.assist2_id)?.name ?? "Unknown") : null,
     createdAt: g.created_at,
   }));
 
@@ -127,7 +129,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
 
 type Body =
   | { action: "start" }
-  | { action: "add-goal"; teamId: string; scorerId: string | null; assistId: string | null }
+  | { action: "add-goal"; teamId: string; scorerId: string | null; assistId: string | null; assist2Id?: string | null }
   | { action: "remove-goal"; eventId: string }
   | { action: "end" }
   | { action: "reopen" }
@@ -197,12 +199,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         team_id: body.teamId,
         scorer_id: body.scorerId || null,
         assist_id: body.assistId || null,
+        assist2_id: body.assist2Id || null || null,
       });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
       // A goal by a not-yet-checked-in player counts as checking them in —
       // don't block logging on lineup bookkeeping. Same for the assist.
-      const autoCheckIns = [body.scorerId, body.assistId].filter((v): v is string => Boolean(v));
+      const autoCheckIns = [body.scorerId, body.assistId, body.assist2Id].filter((v): v is string => Boolean(v));
       if (autoCheckIns.length) {
         const { error: rosterError } = await supabase.from("game_rosters").upsert(
           autoCheckIns.map((playerId) => ({ game_id: gameId, player_id: playerId, team_id: body.teamId })),

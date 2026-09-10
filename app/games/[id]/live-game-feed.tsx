@@ -99,7 +99,12 @@ export function LiveGameFeed({
                   <p className="font-semibold text-neutral-900">
                     {g.teamName} · {g.scorerName ?? "Unknown"}
                   </p>
-                  {g.assistName ? <p className="text-sm text-neutral-500">Assist: {g.assistName}</p> : null}
+                  {g.assistName ? (
+                    <p className="text-sm text-neutral-500">
+                      {g.assist2Name ? "Assists" : "Assist"}: {g.assistName}
+                      {g.assist2Name ? `, ${g.assist2Name}` : ""}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ))}
