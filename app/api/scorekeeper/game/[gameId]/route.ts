@@ -244,8 +244,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     case "reset": {
       // Undo an accidental start: back to scheduled, wiping the sheet.
       // Lineups stay — those were right before the tap.
-      if (game.status !== "live") {
-        return NextResponse.json({ ok: false, error: "Only a live game can be reset" }, { status: 400 });
+      if (game.status !== "live" && game.status !== "final") {
+        return NextResponse.json({ ok: false, error: "Nothing to reset — game hasn't started" }, { status: 400 });
       }
       const goalsDel = await supabase.from("goal_events").delete().eq("game_id", gameId);
       if (goalsDel.error) return NextResponse.json({ ok: false, error: goalsDel.error.message }, { status: 500 });

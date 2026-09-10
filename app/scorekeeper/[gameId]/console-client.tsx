@@ -510,39 +510,6 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
             </button>
           )}
 
-          {confirmReset ? (
-            <div className="glass-card space-y-3 rounded-3xl p-5">
-              <p className="text-sm text-neutral-700">
-                Reset puts this game back to <span className="font-semibold">scheduled</span> and clears every goal and
-                penalty on the sheet. Lineups stay.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={resetGame}
-                  className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
-                >
-                  {busy ? "Resetting…" : "Confirm reset"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmReset(false)}
-                  className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmReset(true)}
-              className="w-full text-center text-xs font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
-            >
-              Started by mistake? Reset game
-            </button>
-          )}
         </div>
       ) : null}
 
@@ -555,6 +522,44 @@ export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: 
         >
           {busy ? "Reopening…" : "Reopen game"}
         </button>
+      ) : null}
+
+      {game.status === "live" || game.status === "final" ? (
+        <div className="space-y-3">
+        {confirmReset ? (
+          <div className="glass-card space-y-3 rounded-3xl p-5">
+            <p className="text-sm text-neutral-700">
+              Are you sure? This puts the game back to <span className="font-semibold">scheduled</span> and erases every goal
+              and penalty on the sheet. Lineups stay. There is no undo.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={resetGame}
+                className="flex-1 rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-50"
+              >
+                {busy ? "Resetting…" : "Yes, reset the game"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                className="rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmReset(true)}
+            className="w-full text-center text-xs font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
+          >
+            Reset game
+          </button>
+        )}
+        </div>
       ) : null}
 
       <div>
