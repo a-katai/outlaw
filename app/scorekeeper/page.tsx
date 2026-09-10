@@ -1,7 +1,6 @@
 import { timeSortKey } from "@/app/components/next-game-card";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
 import { getTeamColors } from "@/lib/league-data";
@@ -39,9 +38,9 @@ export default async function ScorekeeperIndexPage({
   searchParams: Promise<{ code?: string; error?: string }>;
 }) {
   const { code, error } = await searchParams;
-  const authed = await isScorekeeperAuthed();
-  if (!authed && code) redirect(`/api/scorekeeper/login?code=${encodeURIComponent(code)}&next=/scorekeeper`);
-  if (!authed) return <ScorekeeperLogin initialError={error ?? null} />;
+  const authed = await isScorekeeperAuthed(code);
+  if (!authed) return <ScorekeeperLogin initialError={code ? "Invalid code" : (error ?? null)} />;
+  const carry = code ? `?code=${encodeURIComponent(code.trim().toUpperCase())}` : "";
 
   const season = await getActiveSeasonLive();
   const games = (season?.games ?? [])
@@ -72,7 +71,7 @@ export default async function ScorekeeperIndexPage({
           {games.map((g: LiveGame) => (
             <Link
               key={g.id}
-              href={`/scorekeeper/${g.id}`}
+              href={`/scorekeeper/${g.id}${carry}`}
               className="glass-card lift flex items-center justify-between gap-4 rounded-3xl p-5"
             >
               <div className="flex flex-col gap-2">

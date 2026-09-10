@@ -1,12 +1,27 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function ScorekeeperLogin({ initialError = null }: { initialError?: string | null }) {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(initialError);
+  const [cookiesBlocked, setCookiesBlocked] = useState(false);
+
+  useEffect(() => {
+    // Write-and-read a throwaway cookie. If it doesn't stick, sessions can't
+    // either — say so, and route this device through the code-in-URL path.
+    try {
+      document.cookie = "ohl_ct=1; path=/; SameSite=Lax";
+      const stuck = document.cookie.includes("ohl_ct=1");
+      document.cookie = "ohl_ct=; path=/; Max-Age=0";
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCookiesBlocked(!stuck);
+    } catch {
+      setCookiesBlocked(true);
+    }
+  }, []);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
@@ -26,7 +41,7 @@ export function ScorekeeperLogin({ initialError = null }: { initialError?: strin
       }
       // Full reload, not router.refresh(): older tablet browsers sometimes
       // keep showing the form after the cookie lands.
-      window.location.replace("/scorekeeper");
+      window.location.replace(cookiesBlocked ? `/scorekeeper?code=${encodeURIComponent(code.trim().toUpperCase())}` : "/scorekeeper");
     } catch {
       setError("Couldn't reach the server. Try again.");
     } finally {
@@ -60,6 +75,11 @@ export function ScorekeeperLogin({ initialError = null }: { initialError?: strin
           />
         </label>
         {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+        {cookiesBlocked ? (
+          <p className="text-xs text-neutral-500">
+            This browser is blocking cookies. The code still works — it just rides along in the address bar.
+          </p>
+        ) : null}
         <button
           type="submit"
           disabled={submitting}

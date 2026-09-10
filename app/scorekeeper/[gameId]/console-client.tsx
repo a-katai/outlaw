@@ -74,10 +74,14 @@ type ConsoleData = {
   penaltyEvents: PenaltyEvent[];
 };
 
-async function postAction(gameId: string, body: unknown) {
+function authHeaders(code: string | null): HeadersInit {
+  return code ? { "x-scorekeeper-code": code } : {};
+}
+
+async function postAction(gameId: string, body: unknown, code: string | null) {
   const res = await fetch(`/api/scorekeeper/game/${gameId}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders(code) },
     body: JSON.stringify(body),
   });
   return (await res.json()) as { ok: boolean; error?: string };
@@ -95,7 +99,8 @@ function TeamPill({ name }: { name: string }) {
   );
 }
 
-export function ConsoleClient({ gameId }: { gameId: string }) {
+export function ConsoleClient({ gameId, code = null }: { gameId: string; code?: string | null }) {
+  const backHref = code ? `/scorekeeper?code=${encodeURIComponent(code)}` : "/scorekeeper";
   const [data, setData] = useState<ConsoleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +118,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/scorekeeper/game/${gameId}`, { cache: "no-store" });
+      const res = await fetch(`/api/scorekeeper/game/${gameId}`, { cache: "no-store", headers: authHeaders(code) });
       const json = await res.json();
       if (!json.ok) {
         setError(json.error ?? "Couldn't load this game");
@@ -126,7 +131,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [gameId]);
+  }, [gameId, code]);
 
   useEffect(() => {
     // Mount + 10s poll data fetch — same shape as useLiveDraft's fetchAll.
@@ -139,7 +144,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
   const runAction = async (body: unknown) => {
     setBusy(true);
     setActionError(null);
-    const result = await postAction(gameId, body);
+    const result = await postAction(gameId, body, code);
     setBusy(false);
     if (!result.ok) {
       setActionError(result.error ?? "That didn't work");
@@ -214,7 +219,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
         <div className="glass-card rounded-3xl p-10 text-center text-sm font-medium text-rose-600">
           {error ?? "Game not found."}
         </div>
-        <Link href="/scorekeeper" className="text-sm font-medium text-neutral-600 underline underline-offset-4 hover:text-neutral-900">
+        <Link href={backHref} className="text-sm font-medium text-neutral-600 underline underline-offset-4 hover:text-neutral-900">
           ← Back to games
         </Link>
       </div>
@@ -257,7 +262,7 @@ export function ConsoleClient({ gameId }: { gameId: string }) {
 
   return (
     <section className="space-y-6 pb-16">
-      <Link href="/scorekeeper" className="text-xs font-medium text-neutral-500 underline underline-offset-4 hover:text-neutral-900">
+      <Link href={backHref} className="text-xs font-medium text-neutral-500 underline underline-offset-4 hover:text-neutral-900">
         ← Games
       </Link>
 

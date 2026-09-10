@@ -3,8 +3,8 @@ import { isScorekeeperAuthed } from "@/lib/scorekeeper-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { recomputeGame } from "@/lib/scorekeeper";
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
-  if (!(await isScorekeeperAuthed())) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
+  if (!(await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code")))) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -135,7 +135,7 @@ type Body =
   | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
-  if (!(await isScorekeeperAuthed())) {
+  if (!(await isScorekeeperAuthed(req.headers.get("x-scorekeeper-code")))) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

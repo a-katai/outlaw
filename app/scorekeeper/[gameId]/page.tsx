@@ -11,11 +11,10 @@ export default async function ScorekeeperGamePage({
 }) {
   const { gameId } = await params;
   const { code } = await searchParams;
-  const authed = await isScorekeeperAuthed();
-  if (!authed && code) {
-    redirect(`/api/scorekeeper/login?code=${encodeURIComponent(code)}&next=${encodeURIComponent(`/scorekeeper/${gameId}`)}`);
-  }
-  if (!authed) redirect("/scorekeeper");
+  const authed = await isScorekeeperAuthed(code);
+  if (!authed) redirect(code ? "/scorekeeper?error=Invalid%20code" : "/scorekeeper");
 
-  return <ConsoleClient gameId={gameId} />;
+  // A valid ?code= rides along on every API call and link from here, so a
+  // tablet that refuses cookies still works end to end.
+  return <ConsoleClient gameId={gameId} code={code?.trim().toUpperCase() ?? null} />;
 }
