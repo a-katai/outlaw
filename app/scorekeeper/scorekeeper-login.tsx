@@ -1,10 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 export function ScorekeeperLogin({ initialError = null }: { initialError?: string | null }) {
-  const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(initialError);
   const [cookiesBlocked, setCookiesBlocked] = useState(false);
