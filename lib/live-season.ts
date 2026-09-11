@@ -64,6 +64,11 @@ export type LiveSeason = {
   status: SeasonStatus;
   standings: TeamStanding[];
   skaters: SkaterStat[];
+  // Sub pool: each player's line from ONLY the games they dressed for a team
+  // that didn't draft them (a standing sub's every game). These games also
+  // count in `skaters` — the league line is the whole season, this is the
+  // section-off. `team` = the team(s) subbed for, " · "-joined.
+  subs: SkaterStat[];
   goalies: GoalieStat[];
   games: LiveGame[];
   teams: LiveTeam[];
@@ -326,7 +331,8 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   }));
 
   const gameIds = games.map((g) => g.id);
-  const [statsRes, rostersRes, penaltiesRes] = await Promise.all([
+  const teamIds = teams.map((t) => t.id);
+  const [statsRes, rostersRes, penaltiesRes, picksRes] = await Promise.all([
     gameIds.length
       ? supabase.from("game_stats").select("game_id,player_id,team_id,goals,assists").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string; goals: number; assists: number }[] }),
@@ -334,12 +340,19 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
       ? supabase.from("game_rosters").select("game_id,player_id,team_id").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string }[] }),
     gameIds.length
-      ? supabase.from("penalty_events").select("game_id,player_id,minutes").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; player_id: string | null; minutes: number }[] }),
+      ? supabase.from("penalty_events").select("game_id,player_id,team_id,minutes").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; player_id: string | null; team_id: string; minutes: number }[] }),
+    teamIds.length
+      ? supabase.from("draft_picks").select("team_id,player_id").in("team_id", teamIds)
+      : Promise.resolve({ data: [] as { team_id: string; player_id: string }[] }),
   ]);
   const gameStats = statsRes.data ?? [];
   const gameRosters = rostersRes.data ?? [];
   const penaltyRows = penaltiesRes.data ?? [];
+  const picks = picksRes.data ?? [];
+  // A player's team of record is the one that drafted them — not whoever they
+  // last dressed for, or a drafted player who subs once reads as traded.
+  const draftedTeamIdByPlayer = new Map(picks.map((p) => [p.player_id, p.team_id]));
 
   const playerIds = Array.from(new Set([...gameStats.map((s) => s.player_id), ...gameRosters.map((r) => r.player_id)]));
   const playersRes = playerIds.length
@@ -420,12 +433,48 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     .map(([playerId, agg]) => ({
       playerId,
       player: playerNameById.get(playerId) ?? "Unknown",
-      team: subIds.has(playerId) ? "Sub" : (teamNameById.get(agg.teamId) ?? "Unknown"),
+      team: subIds.has(playerId)
+        ? "Sub"
+        : (teamNameById.get(draftedTeamIdByPlayer.get(playerId) ?? agg.teamId) ?? "Unknown"),
       gamesPlayed: agg.gamesPlayed,
       goals: agg.goals,
       assists: agg.assists,
       points: agg.goals + agg.assists,
       pim: pimByPlayer.get(playerId) ?? 0,
+    }))
+    .sort((a, b) => b.points - a.points || b.goals - a.goals);
+
+  // --- Sub pool: the same aggregation over only the appearances where the
+  // player dressed for a team that didn't draft them. Undrafted players
+  // (standing subs, walk-ons) qualify on every game. ---
+  const isSubAppearance = (playerId: string, teamId: string) => draftedTeamIdByPlayer.get(playerId) !== teamId;
+  const subStats = gameStats.filter((s) => isSubAppearance(s.player_id, s.team_id));
+  const subRosters = gameRosters.filter((r) => isSubAppearance(r.player_id, r.team_id));
+  const subAgg = aggregateSkaterStats(finalGameIds, gameDateById, subStats, subRosters);
+
+  const subTeamsByPlayer = new Map<string, Set<string>>();
+  for (const a of [...subRosters, ...subStats]) {
+    if (!finalGameIds.has(a.game_id)) continue;
+    const set = subTeamsByPlayer.get(a.player_id) ?? new Set<string>();
+    set.add(teamNameById.get(a.team_id) ?? "Unknown");
+    subTeamsByPlayer.set(a.player_id, set);
+  }
+  const subPimByPlayer = new Map<string, number>();
+  for (const p of penaltyRows) {
+    if (!p.player_id || !finalGameIds.has(p.game_id) || !isSubAppearance(p.player_id, p.team_id)) continue;
+    subPimByPlayer.set(p.player_id, (subPimByPlayer.get(p.player_id) ?? 0) + p.minutes);
+  }
+
+  const subs: SkaterStat[] = Array.from(subAgg.entries())
+    .map(([playerId, agg]) => ({
+      playerId,
+      player: playerNameById.get(playerId) ?? "Unknown",
+      team: Array.from(subTeamsByPlayer.get(playerId) ?? []).join(" · "),
+      gamesPlayed: agg.gamesPlayed,
+      goals: agg.goals,
+      assists: agg.assists,
+      points: agg.goals + agg.assists,
+      pim: subPimByPlayer.get(playerId) ?? 0,
     }))
     .sort((a, b) => b.points - a.points || b.goals - a.goals);
 
@@ -445,10 +494,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   // --- Rosters via draft_picks, for teams in this season. ---
   const rosters: Record<string, LiveRosterPlayer[]> = {};
   for (const t of teams) rosters[t.name] = [];
-  const teamIds = teams.map((t) => t.id);
   if (teamIds.length) {
-    const picksRes = await supabase.from("draft_picks").select("team_id,player_id").in("team_id", teamIds);
-    const picks = picksRes.data ?? [];
     const rosterPlayerIds = Array.from(new Set(picks.map((p) => p.player_id)));
     const rosterPlayersRes = rosterPlayerIds.length
       ? await supabase.from("players").select("id,name,position,rank,jersey_number").in("id", rosterPlayerIds)
@@ -477,6 +523,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
     status: seasonRow.status as SeasonStatus,
     standings,
     skaters,
+    subs,
     goalies,
     games,
     teams,

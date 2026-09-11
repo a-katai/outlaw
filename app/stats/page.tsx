@@ -33,6 +33,7 @@ export default async function StatsPage({
       label: dbSeason.label,
       standings: dbSeason.standings,
       skaters: dbSeason.skaters,
+      subs: dbSeason.subs,
       goalies: dbSeason.goalies,
       teams: dbSeason.teams,
       rosters: dbSeason.rosters,

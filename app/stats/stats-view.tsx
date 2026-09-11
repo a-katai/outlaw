@@ -15,6 +15,9 @@ export type StatsSeasonViewModel = {
   label: string;
   standings: TeamStanding[];
   skaters: SkaterStat[];
+  // Live/DB seasons only: lines earned while subbing for a team that didn't
+  // draft the player. Archive seasons flag subs with team "Sub" instead.
+  subs?: SkaterStat[];
   // Live/DB seasons only — static archive seasons never carry goalie data.
   goalies?: GoalieStat[];
   teams?: LiveTeam[];
@@ -64,7 +67,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
     };
 
     const league = season.skaters.filter((player) => player.team !== "Sub");
-    const subs = season.skaters.filter((player) => player.team === "Sub");
+    const subs = season.subs ?? season.skaters.filter((player) => player.team === "Sub");
 
     return {
       leaguePlayers: sortPlayers(league),
@@ -535,6 +538,9 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
           <>
           <div>
             <h2 className="text-2xl font-semibold text-neutral-900">Subs</h2>
+            {season.subs ? (
+              <p className="mt-1 text-sm text-neutral-500">Games played for a team that didn&apos;t draft you. Counted above, too.</p>
+            ) : null}
           </div>
 
           <div className="glass-card overflow-hidden rounded-3xl md:hidden">
@@ -551,16 +557,21 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                 <div key={player.playerId ?? player.player} className="grid grid-cols-[minmax(0,1.8fr)_repeat(5,minmax(0,1fr))] gap-2 px-3 py-3 text-xs text-neutral-700">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-semibold text-neutral-900"><PlayerNameLink player={player} /></p>
-                    <span
-                      className="mt-1 inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
-                      style={{
-                        backgroundColor: getTeamColors(player.team).background,
-                        color: getTeamColors(player.team).text,
-                        borderColor: getTeamColors(player.team).border,
-                      }}
-                    >
-                      <span className="truncate">{player.team}</span>
-                    </span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {player.team.split(" · ").map((team) => (
+                        <span
+                          key={team}
+                          className="inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-semibold"
+                          style={{
+                            backgroundColor: getTeamColors(team).background,
+                            color: getTeamColors(team).text,
+                            borderColor: getTeamColors(team).border,
+                          }}
+                        >
+                          <span className="truncate">{team}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   <p className="text-center">{player.gamesPlayed}</p>
                   <p className="text-center">{player.goals}</p>
@@ -580,7 +591,7 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
               <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
                 <tr>
                   <th className="px-4 py-3">Player</th>
-                  <th className="px-4 py-3">Team</th>
+                  <th className="px-4 py-3">For</th>
                   <th className="px-4 py-3">
                     <button type="button" onClick={() => setSortKey("gamesPlayed")} className={sortButtonClass("gamesPlayed")}>
                       GP
@@ -618,16 +629,21 @@ export function StatsView({ season, catalogue }: { season: StatsSeasonViewModel;
                   <tr key={player.playerId ?? player.player} className="border-t border-black/5 text-neutral-700">
                     <td className="px-4 py-3 font-semibold text-neutral-900"><PlayerNameLink player={player} /></td>
                     <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
-                        style={{
-                          backgroundColor: getTeamColors(player.team).background,
-                          color: getTeamColors(player.team).text,
-                          borderColor: getTeamColors(player.team).border,
-                        }}
-                      >
-                        {player.team}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {player.team.split(" · ").map((team) => (
+                          <span
+                            key={team}
+                            className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                            style={{
+                              backgroundColor: getTeamColors(team).background,
+                              color: getTeamColors(team).text,
+                              borderColor: getTeamColors(team).border,
+                            }}
+                          >
+                            {team}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3">{player.gamesPlayed}</td>
                     <td className="px-4 py-3">{player.goals}</td>
