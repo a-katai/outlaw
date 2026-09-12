@@ -13,7 +13,15 @@ type UpcomingGame = {
 };
 
 type RosterEntry = { id: string; name: string; position: string | null; jersey: number | null };
-type SubEntry = { key: string; name: string; paid: boolean; gamesCovered: number };
+type SubEntry = {
+  key: string;
+  name: string;
+  position: string | null;
+  rank: number | null;
+  phone: string | null;
+  paid: boolean;
+  gamesCovered: number;
+};
 
 type SheetData = {
   game: { homeTeamId: string; awayTeamId: string };
@@ -196,37 +204,66 @@ function RosterCard({ teamName, roster }: { teamName: string; roster: RosterEntr
   );
 }
 
-/** The sub line — paid subs first, in the order they paid. Call from the top. */
+/** The sub line — paid subs first, in the order they paid, then everyone else by tier. Call from the top. */
 function SubsCard({ subs }: { subs: SubEntry[] }) {
+  const [query, setQuery] = useState("");
   const paid = subs.filter((s) => s.paid);
-  const waiting = subs.filter((s) => !s.paid);
+  const waiting = subs
+    .filter((s) => !s.paid)
+    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || a.name.localeCompare(b.name));
+  const q = query.trim().toLowerCase();
+  const match = (s: SubEntry) => !q || s.name.toLowerCase().includes(q);
+  const detail = (s: SubEntry) => [s.position, s.rank != null ? `R${s.rank}` : null].filter(Boolean).join(" · ");
+
+  const Row = ({ s, place }: { s: SubEntry; place: number | null }) => (
+    <li className="flex items-center justify-between gap-4 py-2.5">
+      <span className="flex min-w-0 items-baseline gap-3">
+        <span className={`w-7 shrink-0 text-xs tabular-nums ${place ? "font-semibold text-neutral-400" : "text-neutral-300"}`}>{place ?? "·"}</span>
+        <span className="min-w-0">
+          <span className={`block truncate ${s.paid ? "font-medium text-neutral-900" : "text-neutral-700"}`}>{s.name}</span>
+          <span className="block text-xs text-neutral-400">
+            {detail(s)}
+            {s.paid ? (
+              <span className="text-emerald-700">
+                {detail(s) ? " · " : ""}Paid · {s.gamesCovered} {s.gamesCovered === 1 ? "game" : "games"}
+              </span>
+            ) : null}
+          </span>
+        </span>
+      </span>
+      {s.phone ? (
+        <a href={`tel:${s.phone.replace(/\D/g, "")}`} className="shrink-0 text-sm font-medium tabular-nums text-neutral-600 underline-offset-4 hover:text-neutral-900 hover:underline">
+          {s.phone}
+        </a>
+      ) : null}
+    </li>
+  );
+
   return (
     <div className="glass-card rounded-3xl p-6 md:p-8">
-      <h2 className="text-xl font-semibold text-neutral-900">Subs</h2>
-      <p className="mt-1 text-sm text-neutral-500">Paid subs get the first call. Work down the list.</p>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-xl font-semibold text-neutral-900">Subs</h2>
+        <span className="text-sm text-neutral-500">
+          {subs.length} · {paid.length} paid
+        </span>
+      </div>
+      <p className="mt-1 text-sm text-neutral-500">Paid subs get the first call. Then work down by tier.</p>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search subs…"
+        className="mt-4 w-full rounded-xl border border-black/10 bg-white px-3 py-2 text-sm outline-none ring-blue-500/30 transition focus:ring-4"
+      />
       {subs.length === 0 ? (
         <p className="mt-5 text-sm text-neutral-500">No subs yet.</p>
       ) : (
-        <ol className="mt-5 divide-y divide-black/[0.07]">
-          {paid.map((s, i) => (
-            <li key={s.key} className="flex items-baseline justify-between gap-4 py-2.5">
-              <span className="flex items-baseline gap-3">
-                <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-neutral-400">{i + 1}</span>
-                <span className="font-medium text-neutral-900">{s.name}</span>
-              </span>
-              <span className="shrink-0 text-xs font-medium text-emerald-700">
-                Paid · {s.gamesCovered} {s.gamesCovered === 1 ? "game" : "games"}
-              </span>
-            </li>
+        <ol className="mt-3 max-h-[32rem] divide-y divide-black/[0.07] overflow-y-auto">
+          {paid.filter(match).map((s, i) => (
+            <Row key={s.key} s={s} place={i + 1} />
           ))}
-          {waiting.map((s) => (
-            <li key={s.key} className="flex items-baseline justify-between gap-4 py-2.5">
-              <span className="flex items-baseline gap-3">
-                <span className="w-7 shrink-0 text-xs text-neutral-300">·</span>
-                <span className="text-neutral-600">{s.name}</span>
-              </span>
-              <span className="shrink-0 text-xs text-neutral-400">Unpaid</span>
-            </li>
+          {waiting.filter(match).map((s) => (
+            <Row key={s.key} s={s} place={null} />
           ))}
         </ol>
       )}

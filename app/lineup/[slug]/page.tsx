@@ -70,7 +70,15 @@ export default async function LineupPage({
       teamCode={(code ?? "").trim().toUpperCase()}
       games={upcoming}
       roster={season?.rosters[team.name] ?? []}
-      subs={subLine.map((s) => ({ key: s.key, name: s.name, paid: s.paid, gamesCovered: s.gamesCovered }))}
+      subs={subLine.map((s) => ({
+        key: s.key,
+        name: s.name,
+        position: s.position,
+        rank: s.rank,
+        phone: s.phone,
+        paid: s.paid,
+        gamesCovered: s.gamesCovered,
+      }))}
     />
   );
 }

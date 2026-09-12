@@ -35,9 +35,13 @@ export default async function SubsPage() {
   const fee = SUB_FEE_CENTS / 100;
   const paidCount = line.filter((s) => s.paid).length;
 
-  const rows = line.map((s, i) => ({
+  const paidRows = line.filter((s) => s.paid).map((s, i) => ({ ...s, place: i + 1 as number | null }));
+  const waitingRows = line
+    .filter((s) => !s.paid)
+    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99) || a.name.localeCompare(b.name))
+    .map((s) => ({ ...s, place: null as number | null }));
+  const rows = [...paidRows, ...waitingRows].map((s) => ({
     ...s,
-    place: s.paid ? i + 1 : null,
     stats: (s.playerId && statsById.get(s.playerId)) || EMPTY,
   }));
 
@@ -87,6 +91,7 @@ export default async function SubsPage() {
                 <tr>
                   <th className="px-4 py-3 w-10">#</th>
                   <th className="px-4 py-3">Sub</th>
+                  <th className="px-3 py-3">Pos</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-3 py-3 text-right">GP</th>
                   <th className="px-3 py-3 text-right">G</th>
@@ -108,6 +113,7 @@ export default async function SubsPage() {
                         s.name
                       )}
                     </td>
+                    <td className="px-3 py-3 text-xs font-semibold text-neutral-400">{s.position ?? ""}</td>
                     <td className="px-4 py-3 text-xs font-medium">
                       {s.paid ? (
                         <span className="text-emerald-700">Paid{s.firstPaidOn ? ` · ${formatDate(s.firstPaidOn)}` : ""}</span>

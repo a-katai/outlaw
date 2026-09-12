@@ -8,6 +8,11 @@ export type SubLineEntry = {
   key: string;
   playerId: string | null;
   name: string;
+  position: string | null;
+  /** Skill tier, 1 = best. Managers only — never rendered publicly. */
+  rank: number | null;
+  /** Managers only — never rendered publicly. */
+  phone: string | null;
   paid: boolean;
   /** Earliest sub-fee payment, ISO date. */
   firstPaidOn: string | null;
@@ -26,7 +31,7 @@ function nameKey(name: string): string {
 export async function getSubLine(): Promise<SubLineEntry[]> {
   const supabase = createAdminClient();
   const [subsRes, feesRes] = await Promise.all([
-    supabase.from("players").select("id,name").eq("is_sub", true),
+    supabase.from("players").select("id,name,position,rank,phone").eq("is_sub", true),
     supabase
       .from("payments")
       .select("player_id,payer_name,amount_cents,paid_on,created_at,players(name)")
@@ -51,6 +56,9 @@ export async function getSubLine(): Promise<SubLineEntry[]> {
       key: p.id,
       playerId: p.id,
       name: p.name,
+      position: p.position ?? null,
+      rank: p.rank ?? null,
+      phone: p.phone ?? null,
       paid: false,
       firstPaidOn: null,
       gamesCovered: 0,
@@ -65,6 +73,9 @@ export async function getSubLine(): Promise<SubLineEntry[]> {
       key,
       playerId: fee.player_id,
       name,
+      position: null,
+      rank: null,
+      phone: null,
       paid: false,
       firstPaidOn: null,
       gamesCovered: 0,
@@ -93,6 +104,9 @@ export async function getSubLine(): Promise<SubLineEntry[]> {
       key: entry.key,
       playerId: entry.playerId,
       name: entry.name,
+      position: entry.position,
+      rank: entry.rank,
+      phone: entry.phone,
       paid: entry.paid,
       firstPaidOn: entry.firstPaidOn,
       gamesCovered: Math.floor(entry.gamesCovered),
