@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isScorekeeperAuthed, teamIdForCode } from "@/lib/scorekeeper-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { paidSubRankById } from "@/lib/sub-line";
 import { recomputeGame } from "@/lib/scorekeeper";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ gameId: string }> }) {
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   if (!game) return NextResponse.json({ ok: false, error: "Game not found" }, { status: 404 });
 
   const teamIds = [game.home_team_id, game.away_team_id];
-  const [teamsRes, picksRes, rostersRes, goalsRes, allPlayersRes, penaltiesRes] = await Promise.all([
+  const [teamsRes, picksRes, rostersRes, goalsRes, allPlayersRes, penaltiesRes, subRanks] = await Promise.all([
     supabase.from("teams").select("id,name").in("id", teamIds),
     supabase.from("draft_picks").select("team_id,player_id").in("team_id", teamIds),
     supabase.from("game_rosters").select("team_id,player_id").eq("game_id", gameId),
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
       .select("id,team_id,player_id,infraction,minutes,period,created_at")
       .eq("game_id", gameId)
       .order("created_at", { ascending: true }),
+    paidSubRankById(),
   ]);
   if (teamsRes.error) return NextResponse.json({ ok: false, error: teamsRes.error.message }, { status: 500 });
   if (picksRes.error) return NextResponse.json({ ok: false, error: picksRes.error.message }, { status: 500 });
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ game
   const rosteredIds = new Set([...homeRoster.map((p) => p.id), ...awayRoster.map((p) => p.id)]);
   const playerPool = allPlayers
     .filter((p) => !rosteredIds.has(p.id))
-    .map((p) => ({ id: p.id, name: p.name, position: p.position, rank: p.rank, jersey: p.jersey_number ?? null, isSub: p.is_sub }));
+    .map((p) => ({ id: p.id, name: p.name, position: p.position, rank: p.rank, jersey: p.jersey_number ?? null, isSub: p.is_sub, subRank: subRanks.get(p.id) ?? null }));
 
   const goalEvents = goals.map((g) => ({
     id: g.id,

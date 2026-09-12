@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import { FormEvent, useRef, useState } from "react";
+import { DUES_CHIPS, type AmountChip, type PaymentKind } from "@/lib/dues";
 
 type PlayerOption = { id: string; name: string };
 
@@ -44,11 +45,6 @@ const FIELD_DEFS = [
 
 type FieldKey = (typeof FIELD_DEFS)[number]["key"];
 
-const AMOUNT_CHIPS = [
-  { amount: 150, label: "Deposit · $150" },
-  { amount: 650, label: "Skater · $650" },
-  { amount: 100, label: "Goalie · $100" },
-];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const cloverStyles = {
@@ -85,7 +81,25 @@ function cloverFieldClass(focused: boolean, hasError: boolean) {
   return `${base} border-black/10`;
 }
 
-export function PaymentsForm({ publicToken, players }: { publicToken: string; players: PlayerOption[] }) {
+export function PaymentsForm({
+  publicToken,
+  players,
+  kind = "dues",
+  chips = DUES_CHIPS,
+  title = "Pay by Card",
+  namePlaceholder = "First Last",
+  amountPlaceholder = "150.00",
+  receiptNote = "Recorded in the league ledger.",
+}: {
+  publicToken: string;
+  players: PlayerOption[];
+  kind?: PaymentKind;
+  chips?: AmountChip[];
+  title?: string;
+  namePlaceholder?: string;
+  amountPlaceholder?: string;
+  receiptNote?: string;
+}) {
   const [sdkError, setSdkError] = useState(false);
   const [elementsReady, setElementsReady] = useState(false);
 
@@ -186,6 +200,7 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
           name: trimmedName,
           email: trimmedEmail,
           amountCents,
+          kind,
         }),
       });
 
@@ -238,7 +253,7 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
                 <span className="font-semibold text-neutral-900">{receipt.name}</span>
               </div>
               <div className="h-px bg-black/10" />
-              <p className="font-medium text-emerald-700">Recorded in the league ledger.</p>
+              <p className="font-medium text-emerald-700">{receiptNote}</p>
               {!receipt.ledgerLogged ? (
                 <p className="text-xs text-amber-700">
                   Your card was charged, but the ledger update is delayed — the league admin has been notified.
@@ -258,7 +273,7 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-semibold text-neutral-900">Pay by Card</h2>
+            <h2 className="text-xl font-semibold text-neutral-900">{title}</h2>
             <p className="mt-1 text-sm text-neutral-500">
               Secure card processing via Clover. Your card details never touch our servers.
             </p>
@@ -270,7 +285,7 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
                   className={inputClass}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="First Last"
+                  placeholder={namePlaceholder}
                   autoComplete="name"
                   list={players.length > 0 ? "player-names" : undefined}
                   required
@@ -310,15 +325,15 @@ export function PaymentsForm({ publicToken, players }: { publicToken: string; pl
                     if (!Number.isFinite(value)) return;
                     setAmount(value.toFixed(2));
                   }}
-                  placeholder="150.00"
+                  placeholder={amountPlaceholder}
                   required
                 />
                 <div className="mt-1 flex flex-wrap gap-2">
-                  {AMOUNT_CHIPS.map((chip) => (
+                  {chips.map((chip) => (
                     <button
-                      key={chip.amount}
+                      key={chip.amountCents}
                       type="button"
-                      onClick={() => setAmount(chip.amount.toFixed(2))}
+                      onClick={() => setAmount((chip.amountCents / 100).toFixed(2))}
                       className="rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-medium text-neutral-600 transition hover:border-blue-500/40 hover:text-neutral-900"
                     >
                       {chip.label}

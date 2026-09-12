@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { CURRENT_SEASON, isPaymentKind, type PaymentKind } from "@/lib/dues";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SEASON = "Summer 2026";
+const SEASON = CURRENT_SEASON;
+
+const DESCRIPTION: Record<PaymentKind, string> = {
+  dues: "Outlaw Hockey League dues",
+  sub: "Outlaw Hockey League sub fee",
+};
 const CLOVER_CHARGES_URL = "https://scl.clover.com/v1/charges";
 
 // Rate-limit thresholds for the public card endpoint (card-testing defense).
@@ -20,6 +26,7 @@ type ChargeBody = {
   name?: unknown;
   email?: unknown;
   amountCents?: unknown;
+  kind?: unknown;
 };
 
 function callerIp(req: NextRequest): string {
@@ -79,6 +86,7 @@ export async function POST(req: NextRequest) {
   if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 100000) {
     return NextResponse.json({ ok: false, error: "Amount must be between $1 and $1,000." }, { status: 400 });
   }
+  const kind: PaymentKind = isPaymentKind(body.kind) ? body.kind : "dues";
   if (!token || !token.startsWith("clv_")) {
     return NextResponse.json({ ok: false, error: "Invalid payment token." }, { status: 400 });
   }
@@ -140,7 +148,7 @@ export async function POST(req: NextRequest) {
         amount: amountCents,
         currency: "usd",
         source: token,
-        description: `Outlaw Hockey League dues — ${name}`,
+        description: `${DESCRIPTION[kind]} — ${name}`,
         receipt_email: email,
       }),
     });
@@ -191,6 +199,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     const { error: insertError } = await supabase.from("payments").insert({
+      kind,
       player_id: matchedPlayer?.id ?? null,
       payer_name: name,
       amount_cents: amountCents,

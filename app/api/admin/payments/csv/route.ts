@@ -24,11 +24,11 @@ export async function GET() {
 
   const nameById = new Map((playersRes.data ?? []).map((p) => [p.id, p.name]));
 
-  const header = ["Date", "Payer", "Amount", "Method", "Season", "Note"];
+  const header = ["Date", "Kind", "Payer", "Amount", "Method", "Season", "Note"];
   const rows = (paymentsRes.data ?? []).map((p) => {
     const payer = p.player_id ? (nameById.get(p.player_id) ?? "Unknown player") : (p.payer_name ?? "");
     const amount = (p.amount_cents / 100).toFixed(2);
-    return [p.paid_on, payer, amount, p.method, p.season ?? "", p.note ?? ""];
+    return [p.paid_on, p.kind ?? "dues", payer, amount, p.method, p.season ?? "", p.note ?? ""];
   });
 
   const csv = [header, ...rows].map((row) => row.map((cell) => csvCell(String(cell))).join(",")).join("\n");

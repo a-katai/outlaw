@@ -3,7 +3,18 @@
 import { useState } from "react";
 
 export type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null };
-export type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: boolean };
+/** subRank = position in the paid sub line (1 = first call); null for unpaid subs and non-subs. */
+export type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: boolean; subRank: number | null };
+
+/** Paid subs first, in line order; then the rest A–Z. */
+export function sortSubs<T extends PoolPlayer>(subs: T[]): T[] {
+  return [...subs].sort((a, b) => {
+    if (a.subRank != null && b.subRank != null) return a.subRank - b.subRank;
+    if (a.subRank != null) return -1;
+    if (b.subRank != null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 /** "#55 Tony Katai" when a number is claimed; the bare name otherwise. */
 export const label = (p: { name: string; jersey: number | null }) => (p.jersey == null ? p.name : `#${p.jersey} ${p.name}`);
@@ -73,14 +84,13 @@ export function LineupColumn({
         >
           <option value="">Add player…</option>
           {pool.some((p) => p.isSub) ? (
-            <optgroup label="Subs">
-              {pool
-                .filter((p) => p.isSub)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {label(p)}
-                  </option>
-                ))}
+            <optgroup label="Subs · paid first">
+              {sortSubs(pool.filter((p) => p.isSub)).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {label(p)}
+                  {p.subRank != null ? ` · paid #${p.subRank}` : ""}
+                </option>
+              ))}
             </optgroup>
           ) : null}
           <optgroup label="Rostered elsewhere">

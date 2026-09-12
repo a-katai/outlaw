@@ -2,10 +2,15 @@
 
 import { Fragment, FormEvent, useMemo, useState } from "react";
 import type { Payment, PaymentMethod, Player } from "@/lib/draft-types";
+import { CURRENT_SEASON, SUB_FEE_CENTS, type PaymentKind } from "@/lib/dues";
 import { confidenceLabel, suggestPlayers } from "@/lib/name-match";
 import { AdminState, formatCents, postJSON } from "./admin-api";
 
 const METHODS: PaymentMethod[] = ["cash", "venmo", "zelle", "card", "check", "other"];
+const KINDS: { value: PaymentKind; label: string }[] = [
+  { value: "dues", label: "League dues" },
+  { value: "sub", label: "Sub fee" },
+];
 
 // Fall 2026 dues: $150 deposit due Aug 10 to hold a spot; full cost is $650
 // skater / $100 goalie, with the deposit counting toward the total. A goalie's
@@ -99,13 +104,23 @@ function todayISO(): string {
 }
 
 export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetch: () => Promise<void> }) {
-  const { players, payments } = state;
+  const { players, payments: allPayments } = state;
+  // Sub fees are their own pool — they never count toward dues.
+  const payments = useMemo(() => allPayments.filter((p) => p.kind !== "sub"), [allPayments]);
+  const subPayments = useMemo(
+    () =>
+      allPayments
+        .filter((p) => p.kind === "sub")
+        .sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at)),
+    [allPayments],
+  );
 
   const [playerId, setPlayerId] = useState("");
   const [payerName, setPayerName] = useState("");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [season, setSeason] = useState("Fall 2026");
+  const [kind, setKind] = useState<PaymentKind>("dues");
+  const [season, setSeason] = useState(CURRENT_SEASON);
   const [paidOn, setPaidOn] = useState(todayISO());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -166,6 +181,7 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
       payerName: playerId ? null : payerName,
       amountCents,
       method,
+      kind,
       season,
       paidOn,
       note,
@@ -244,7 +260,7 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
           <p className="mt-2 text-3xl font-semibold text-neutral-900">{formatCents(duesSummary.outstandingCents)}</p>
         </div>
       </div>
-      <p className="-mt-4 text-xs text-neutral-500">All recorded payments count toward fall dues.</p>
+      <p className="-mt-4 text-xs text-neutral-500">League dues only. Sub fees are their own pool, below.</p>
 
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -413,6 +429,20 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
             />
           </label>
           <label className="grid gap-1.5 text-sm">
+            <span className="font-medium text-neutral-700">Kind</span>
+            <select
+              className="rounded-xl border border-black/10 bg-white px-3 py-2.5 outline-none ring-blue-500/30 transition focus:ring-4"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as PaymentKind)}
+            >
+              {KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-neutral-700">Method</span>
             <select
               className="rounded-xl border border-black/10 bg-white px-3 py-2.5 outline-none ring-blue-500/30 transition focus:ring-4"
@@ -462,6 +492,68 @@ export function AdminPaymentsTab({ state, refetch }: { state: AdminState; refetc
           {busy ? "Adding…" : "Add payment"}
         </button>
       </form>
+
+      <div>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-xl font-semibold text-neutral-900">Sub fees</h2>
+          <p className="text-sm text-neutral-500">
+            {formatCents(subPayments.reduce((sum, p) => sum + p.amount_cents, 0))} · ${SUB_FEE_CENTS / 100} per game · paid subs get the first call, in this order
+          </p>
+        </div>
+        <div className="glass-card mt-4 overflow-x-auto rounded-3xl">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="bg-neutral-50/90 text-xs uppercase tracking-wide text-neutral-500">
+              <tr>
+                <th className="px-4 py-3">#</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Sub</th>
+                <th className="px-4 py-3">Amount</th>
+                <th className="px-4 py-3">Method</th>
+                <th className="px-4 py-3">Note</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {subPayments.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-neutral-500">
+                    No sub fees yet.
+                  </td>
+                </tr>
+              ) : (
+                subPayments.map((p, i) => (
+                  <tr key={p.id} className="border-t border-black/5 text-neutral-700">
+                    <td className="px-4 py-3 tabular-nums text-neutral-400">{i + 1}</td>
+                    <td className="px-4 py-3">{p.paid_on}</td>
+                    <td className="px-4 py-3 font-medium text-neutral-900">
+                      {p.player_id ? nameById.get(p.player_id) ?? "Unknown player" : p.payer_name}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-neutral-900">{formatCents(p.amount_cents)}</td>
+                    <td className="px-4 py-3 capitalize">{p.method}</td>
+                    <td className="px-4 py-3 text-neutral-500">{p.note ?? "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      {confirmDeleteId === p.id ? (
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => deletePayment(p.id)} className="text-xs font-semibold text-rose-600 hover:text-rose-800">
+                            Confirm
+                          </button>
+                          <button type="button" onClick={() => setConfirmDeleteId(null)} className="text-xs font-medium text-neutral-500 hover:text-neutral-800">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => setConfirmDeleteId(p.id)} className="text-xs font-medium text-neutral-500 hover:text-rose-600">
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div>
         <div className="flex flex-wrap items-center justify-between gap-3">

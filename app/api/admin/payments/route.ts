@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdminAuthed } from "@/lib/admin-auth";
 import { createAdminClient } from "@/lib/supabase-admin";
 import type { PaymentMethod } from "@/lib/draft-types";
+import { isPaymentKind } from "@/lib/dues";
 
 type Body =
   | {
@@ -10,6 +11,7 @@ type Body =
       payerName?: string | null;
       amountCents: number;
       method: PaymentMethod;
+      kind?: unknown;
       season?: string | null;
       note?: string | null;
       paidOn?: string | null;
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
         payer_name: body.playerId ? null : body.payerName?.trim(),
         amount_cents: Math.round(amountCents),
         method: body.method,
+        kind: isPaymentKind(body.kind) ? body.kind : "dues",
         season: body.season?.trim() || null,
         note: body.note?.trim() || null,
       };

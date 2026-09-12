@@ -1,3 +1,5 @@
+import type { PaymentKind } from "@/lib/dues";
+
 // Row shapes mirroring supabase/migrations/0001_draft_and_payments.sql.
 // Hand-written (no generated types) — keep in sync with the migration.
 
@@ -55,6 +57,7 @@ export type PaymentMethod = "cash" | "venmo" | "zelle" | "card" | "check" | "oth
 
 export type Payment = {
   id: string;
+  kind: PaymentKind;
   player_id: string | null;
   payer_name: string | null;
   amount_cents: number;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getActiveSeasonLive } from "@/lib/live-season";
 import { teamIdForCode } from "@/lib/scorekeeper-auth";
 import { teamNameFromSlug } from "@/lib/team-logos";
+import { getSubLine } from "@/lib/sub-line";
 import { LineupManager } from "./lineup-manager";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 /**
- * Manager's lineup page: /lineup/<team>?code=<team code>. Dress players for
- * the next game(s) before puck drop so the scorekeeper starts with a sheet.
+ * Manager's page: /lineup/<team>?code=<team code>. Dress players for the
+ * next game(s) before puck drop so the scorekeeper starts with a sheet, see
+ * the full roster, and the sub line (paid subs first — call from the top).
  * The code is the team's own (team_codes) and never leaves the URL.
  */
 export default async function LineupPage({
@@ -28,7 +30,7 @@ export default async function LineupPage({
   const { slug } = await params;
   const { code } = await searchParams;
   const teamName = teamNameFromSlug(slug);
-  const season = await getActiveSeasonLive();
+  const [season, subLine] = await Promise.all([getActiveSeasonLive(), getSubLine()]);
   const team = season?.teams.find((t) => t.name === teamName) ?? null;
   const codeTeamId = await teamIdForCode(code);
   const authed = Boolean(team && codeTeamId && codeTeamId === team.id);
@@ -67,6 +69,8 @@ export default async function LineupPage({
       teamName={team.name}
       teamCode={(code ?? "").trim().toUpperCase()}
       games={upcoming}
+      roster={season?.rosters[team.name] ?? []}
+      subs={subLine.map((s) => ({ key: s.key, name: s.name, paid: s.paid, gamesCovered: s.gamesCovered }))}
     />
   );
 }

@@ -106,6 +106,7 @@ function PhaseStrip() {
   const rows = [
     { href: "/draft", label: "Draft night", value: "Wednesday, August 26 · 8 PM · Mr. Joe's" },
     { href: "/payments", label: "Fall dues", value: "$150 deposit · skaters $650 · goalies $100" },
+    { href: "/subs", label: "Subs", value: "$25 per game · paid subs get the first call" },
   ];
   return (
     <div className="hero-rise-late mx-auto max-w-2xl divide-y divide-black/[0.07] border-y border-black/[0.07]">
