@@ -72,6 +72,7 @@ export default async function LineupPage({
       roster={season?.rosters[team.name] ?? []}
       subs={subLine.map((s) => ({
         key: s.key,
+        playerId: s.playerId,
         name: s.name,
         position: s.position,
         rank: s.rank,

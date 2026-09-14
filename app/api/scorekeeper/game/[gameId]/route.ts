@@ -143,6 +143,22 @@ type Body =
   | { action: "add-new-player"; teamId: string; name: string }
   | { action: "toggle-player"; teamId: string; playerId: string; dressed: boolean };
 
+/** True when this player is already on the other team's sheet for this game. */
+async function dressedElsewhere(
+  supabase: ReturnType<typeof createAdminClient>,
+  gameId: string,
+  playerId: string,
+  teamId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("game_rosters")
+    .select("team_id")
+    .eq("game_id", gameId)
+    .eq("player_id", playerId)
+    .maybeSingle();
+  return Boolean(data && data.team_id !== teamId);
+}
+
 /** 1–3 or 4 (OT); anything else is "not recorded". */
 function periodOf(v: unknown): number | null {
   return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 4 ? v : null;
@@ -234,6 +250,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
         return NextResponse.json({ ok: false, error: "playerId and dressed are required" }, { status: 400 });
       }
       if (body.dressed) {
+        // A player can only be on one bench in a game. The upsert ignores
+        // duplicates, so without this check dressing someone already on the
+        // other sheet would silently do nothing — say so instead.
+        const other = await dressedElsewhere(supabase, gameId, body.playerId, body.teamId);
+        if (other) {
+          return NextResponse.json({ ok: false, error: "Already dressed for the other team" }, { status: 409 });
+        }
         const { error } = await supabase
           .from("game_rosters")
           .upsert(
@@ -242,11 +265,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
           );
         if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       } else {
+        // team_id scopes the delete: nobody scratches a player off the other bench.
         const { error } = await supabase
           .from("game_rosters")
           .delete()
           .eq("game_id", gameId)
-          .eq("player_id", body.playerId);
+          .eq("player_id", body.playerId)
+          .eq("team_id", body.teamId);
         if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       }
       // Lineup check-in doesn't touch goal_events/game_stats, so skip
@@ -337,6 +362,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
           .single();
         if (createError) return NextResponse.json({ ok: false, error: createError.message }, { status: 500 });
         playerId = created.id;
+      }
+      const other = await dressedElsewhere(supabase, gameId, playerId, body.teamId);
+      if (other) {
+        return NextResponse.json({ ok: false, error: "Already dressed for the other team" }, { status: 409 });
       }
       const { error } = await supabase
         .from("game_rosters")

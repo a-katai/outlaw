@@ -12,9 +12,11 @@ type UpcomingGame = {
   status: "scheduled" | "live" | "final";
 };
 
+type SubStatus = "open" | "dressed" | "taken";
 type RosterEntry = { id: string; name: string; position: string | null; jersey: number | null };
 type SubEntry = {
   key: string;
+  playerId: string | null;
   name: string;
   position: string | null;
   rank: number | null;
@@ -76,8 +78,8 @@ export function LineupManager({
     load();
   }, [load]);
 
-  const act = async (body: unknown) => {
-    if (!gameId) return false;
+  const post = async (body: unknown): Promise<{ ok: boolean; playerId?: string } | null> => {
+    if (!gameId) return null;
     setBusy(true);
     setError(null);
     try {
@@ -89,16 +91,35 @@ export function LineupManager({
       const json = await res.json();
       if (!json.ok) {
         setError(json.error ?? "That didn't work");
-        return false;
+        return json;
       }
       await load();
-      return true;
+      return json;
     } catch {
       setError("Couldn't reach the server.");
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
+  };
+
+  const act = async (body: unknown) => Boolean((await post(body))?.ok);
+
+  // A paid sub who was never in `players` has no id until we create one.
+  // add-new-player hands the new id back; remember it so the row flips to
+  // Dressed instead of still reading "Tap to dress".
+  const [linked, setLinked] = useState<Record<string, string>>({});
+  const idFor = (s: SubEntry) => s.playerId ?? linked[s.key] ?? null;
+
+  const dressSub = async (s: SubEntry, dress: boolean) => {
+    const id = idFor(s);
+    if (id) {
+      await act({ action: "toggle-player", teamId, playerId: id, dressed: dress });
+      return;
+    }
+    if (!dress) return;
+    const json = await post({ action: "add-new-player", teamId, name: s.name });
+    if (json?.ok && json.playerId) setLinked((m) => ({ ...m, [s.key]: json.playerId as string }));
   };
 
   const side = data ? (data.game.homeTeamId === teamId ? "home" : "away") : null;
@@ -166,7 +187,21 @@ export function LineupManager({
 
       <div className="grid gap-6 pt-4 md:grid-cols-2">
         <RosterCard teamName={teamName} roster={fullRoster} />
-        <SubsCard subs={subs} />
+        <SubsCard
+          subs={subs}
+          gameLabel={current ? `${formatDate(current.date)} · ${current.home ? "vs" : "at"} ${current.opponent}` : null}
+          statusFor={(s) => {
+            const id = idFor(s);
+            if (!data || !side || !id) return "open";
+            if (data.roster[side].some((r) => r.id === id && r.dressed)) return "dressed";
+            const other = side === "home" ? "away" : "home";
+            if (data.roster[other].some((r) => r.id === id && r.dressed)) return "taken";
+            return "open";
+          }}
+          onDress={dressSub}
+          busy={busy}
+          ready={Boolean(gameId && data)}
+        />
       </div>
     </section>
   );
@@ -204,8 +239,22 @@ function RosterCard({ teamName, roster }: { teamName: string; roster: RosterEntr
   );
 }
 
-/** The sub line — paid subs first, in the order they paid, then everyone else by tier. Call from the top. */
-function SubsCard({ subs }: { subs: SubEntry[] }) {
+/** The sub line — paid subs first, in the order they paid, then everyone else by tier. Tap a row to dress them. */
+function SubsCard({
+  subs,
+  gameLabel,
+  statusFor,
+  onDress,
+  busy,
+  ready,
+}: {
+  subs: SubEntry[];
+  gameLabel: string | null;
+  statusFor: (s: SubEntry) => SubStatus;
+  onDress: (s: SubEntry, dress: boolean) => void;
+  busy: boolean;
+  ready: boolean;
+}) {
   const [query, setQuery] = useState("");
   const paid = subs.filter((s) => s.paid);
   const waiting = subs
@@ -215,29 +264,56 @@ function SubsCard({ subs }: { subs: SubEntry[] }) {
   const match = (s: SubEntry) => !q || s.name.toLowerCase().includes(q);
   const detail = (s: SubEntry) => [s.position, s.rank != null ? `R${s.rank}` : null].filter(Boolean).join(" · ");
 
-  const Row = ({ s, place }: { s: SubEntry; place: number | null }) => (
-    <li className="flex items-center justify-between gap-4 py-2.5">
-      <span className="flex min-w-0 items-baseline gap-3">
-        <span className={`w-7 shrink-0 text-xs tabular-nums ${place ? "font-semibold text-neutral-400" : "text-neutral-300"}`}>{place ?? "·"}</span>
-        <span className="min-w-0">
-          <span className={`block truncate ${s.paid ? "font-medium text-neutral-900" : "text-neutral-700"}`}>{s.name}</span>
-          <span className="block text-xs text-neutral-400">
-            {detail(s)}
-            {s.paid ? (
-              <span className="text-emerald-700">
-                {detail(s) ? " · " : ""}Paid · {s.gamesCovered} {s.gamesCovered === 1 ? "game" : "games"}
+  const Row = ({ s, place }: { s: SubEntry; place: number | null }) => {
+    const status = statusFor(s);
+    const tappable = ready && !busy && status !== "taken";
+    return (
+      <li className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={!tappable}
+          aria-pressed={status === "dressed"}
+          onClick={() => onDress(s, status !== "dressed")}
+          className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition ${
+            tappable ? "hover:bg-neutral-50 active:bg-neutral-100" : "cursor-default"
+          }`}
+        >
+          <span className="flex min-w-0 items-baseline gap-3">
+            <span className={`w-7 shrink-0 text-xs tabular-nums ${place ? "font-semibold text-neutral-400" : "text-neutral-300"}`}>{place ?? "·"}</span>
+            <span className="min-w-0">
+              <span className={`block truncate ${s.paid ? "font-medium text-neutral-900" : "text-neutral-700"}`}>{s.name}</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-xs text-neutral-400">
+                {status === "dressed" ? (
+                  <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white">Dressed</span>
+                ) : status === "taken" ? (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-500">Other bench</span>
+                ) : null}
+                <span className="truncate">
+                  {detail(s)}
+                  {s.paid ? (
+                    <span className="text-emerald-700">
+                      {detail(s) ? " · " : ""}Paid · {s.gamesCovered} {s.gamesCovered === 1 ? "game" : "games"}
+                    </span>
+                  ) : null}
+                </span>
               </span>
-            ) : null}
+            </span>
           </span>
-        </span>
-      </span>
-      {s.phone ? (
-        <a href={`tel:${s.phone.replace(/\D/g, "")}`} className="shrink-0 text-sm font-medium tabular-nums text-neutral-600 underline-offset-4 hover:text-neutral-900 hover:underline">
-          {s.phone}
-        </a>
-      ) : null}
-    </li>
-  );
+          <span className="shrink-0 text-xs font-semibold text-neutral-400">
+            {status === "open" && ready ? <span className="hidden sm:inline">Dress</span> : null}
+          </span>
+        </button>
+        {s.phone ? (
+          <a
+            href={`tel:${s.phone.replace(/\D/g, "")}`}
+            className="flex min-h-11 shrink-0 items-center px-1 text-sm font-medium tabular-nums text-neutral-600 underline-offset-4 hover:text-neutral-900 hover:underline"
+          >
+            {s.phone}
+          </a>
+        ) : null}
+      </li>
+    );
+  };
 
   return (
     <div className="glass-card rounded-3xl p-6 md:p-8">
@@ -247,7 +323,10 @@ function SubsCard({ subs }: { subs: SubEntry[] }) {
           {subs.length} · {paid.length} paid
         </span>
       </div>
-      <p className="mt-1 text-sm text-neutral-500">Paid subs get the first call. Then work down by tier.</p>
+      <p className="mt-1 text-sm text-neutral-500">
+        Paid subs get the first call. Then work down by tier.
+        {gameLabel ? ` Tap a name to dress them for ${gameLabel}.` : ""}
+      </p>
       <input
         type="search"
         value={query}
