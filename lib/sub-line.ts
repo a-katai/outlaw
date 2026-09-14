@@ -50,8 +50,12 @@ export async function getSubLine(): Promise<SubLineEntry[]> {
   };
 
   const entries = new Map<string, SubLineEntry & { firstCreatedAt: string | null }>();
+  // A sub fee paid under a name we couldn't link to players.id still belongs
+  // to that person — match on the name so they appear once, paid, not twice.
+  const keyByName = new Map<string, string>();
 
   for (const p of subsRes.data ?? []) {
+    keyByName.set(nameKey(p.name), p.id);
     entries.set(p.id, {
       key: p.id,
       playerId: p.id,
@@ -68,7 +72,8 @@ export async function getSubLine(): Promise<SubLineEntry[]> {
 
   for (const fee of (feesRes.data ?? []) as unknown as FeeRow[]) {
     const name = fee.players?.name ?? fee.payer_name ?? "Unknown";
-    const key = fee.player_id ?? nameKey(name);
+    const key = fee.player_id ?? keyByName.get(nameKey(name)) ?? nameKey(name);
+    keyByName.set(nameKey(name), key);
     const entry = entries.get(key) ?? {
       key,
       playerId: fee.player_id,
