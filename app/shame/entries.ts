@@ -10,8 +10,10 @@ export type ShameEntry = {
   name: string;
   /** The "charge" — the punchline. */
   charge: string;
-  /** Booked on, ISO. Shown on the placard. */
+  /** Booked on, ISO. */
   bookedOn: string;
+  /** League week the card belongs to — the wall grows one card a week. */
+  week: number;
   team?: string;
 };
 
@@ -21,5 +23,6 @@ export const SHAME_ENTRIES: ShameEntry[] = [
     name: "Jeff Wesley",
     charge: "Being too nice",
     bookedOn: "2026-09-14",
+    week: 1,
   },
 ];

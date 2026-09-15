@@ -1,26 +1,17 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import { SHAME_ENTRIES, type ShameEntry } from "./entries";
+import { ShameWall } from "@/app/components/shame-wall";
+import { SHAME_ENTRIES } from "./entries";
 
 /**
  * The Wall of Shame. Gag booking photos of league guys — funny to the room,
  * less funny in a search result for someone's name, so the page is noindexed.
+ * The home page shows the same cards; this is the full wall.
  */
 export const metadata: Metadata = {
   title: "Wall of Shame — Outlaw Hockey League",
   description: "Booked, printed, and posted. The Outlaw Hockey League Wall of Shame.",
   robots: { index: false, follow: false },
 };
-
-function formatBooked(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-/** Case number is cosmetic — derived from the date so it never shuffles. */
-function caseNumber(entry: ShameEntry, index: number): string {
-  return `OHL-${entry.bookedOn.replaceAll("-", "").slice(2)}-${String(index + 1).padStart(3, "0")}`;
-}
 
 export default function ShamePage() {
   return (
@@ -38,32 +29,7 @@ export default function ShamePage() {
           Nobody has earned it yet. Give it a week.
         </div>
       ) : (
-        <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {SHAME_ENTRIES.map((entry, i) => (
-            <li key={entry.id} className="glass-card lift overflow-hidden rounded-3xl">
-              <div className="relative aspect-[3/4] bg-neutral-200">
-                <Image
-                  src={`/shame/${entry.id}.jpg`}
-                  alt={`Booking photo of ${entry.name}`}
-                  fill
-                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                  className="object-cover"
-                  priority={i === 0}
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-neutral-900/92 px-4 py-3 text-white backdrop-blur-sm">
-                  <p className="nameplate text-lg leading-tight">{entry.name}</p>
-                  <p className="mt-0.5 text-sm text-white/70">{entry.charge}</p>
-                </div>
-              </div>
-              <div className="flex items-baseline justify-between gap-3 px-4 py-3 text-xs text-neutral-500">
-                <span className="font-semibold tracking-[0.14em] uppercase">
-                  Booked {formatBooked(entry.bookedOn)}
-                </span>
-                <span className="tabular-nums">{caseNumber(entry, i)}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ShameWall entries={SHAME_ENTRIES} />
       )}
 
       <p className="text-xs text-neutral-400">
