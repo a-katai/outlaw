@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null };
+export type RosterPlayer = { id: string; name: string; dressed: boolean; jersey: number | null; position: string | null };
 /** subRank = position in the paid sub line (1 = first call); null for unpaid subs and non-subs. */
 export type PoolPlayer = { id: string; name: string; jersey: number | null; isSub: boolean; subRank: number | null };
 

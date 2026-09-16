@@ -17,7 +17,7 @@ export async function GET() {
   const [seasonsRes, teamsRes, playersRes, picksRes] = await Promise.all([
     supabase.from("seasons").select("*").order("id", { ascending: false }),
     supabase.from("teams").select("*").order("name", { ascending: true }),
-    supabase.from("players").select("id,name").order("name", { ascending: true }),
+    supabase.from("players").select("id,name,position,jersey_number").order("name", { ascending: true }),
     supabase.from("draft_picks").select("team_id,player_id"),
   ]);
 

@@ -17,7 +17,7 @@ export type SeasonAdminTeam = {
   created_at: string;
 };
 
-export type SeasonAdminPlayer = { id: string; name: string };
+export type SeasonAdminPlayer = { id: string; name: string; position: string | null; jersey_number: number | null };
 
 export type SeasonAdminPick = { team_id: string; player_id: string };
 

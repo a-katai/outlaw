@@ -9,6 +9,7 @@ import type {
   SeasonAdminSeries,
   SeasonAdminState,
 } from "./admin-season-api";
+import { downloadLineupPdf, fileSlug, formatSheetDate } from "@/lib/lineup-pdf";
 
 export function AdminSeasonTab({
   state,
@@ -673,6 +674,26 @@ function GameRow({
     await refetch();
   };
 
+  // Both benches as printed, dressed only — game_rosters IS the dressed set.
+  const saveLineupPdf = () => {
+    const nameById = new Map(players.map((p) => [p.id, p]));
+    const bench = (teamId: string, teamName: string) => ({
+      teamName,
+      players: gameRosters
+        .filter((r) => r.team_id === teamId)
+        .map((r) => {
+          const p = nameById.get(r.player_id);
+          return { jersey: p?.jersey_number ?? null, name: p?.name ?? "Unknown", position: p?.position ?? null };
+        }),
+    });
+    downloadLineupPdf({
+      title: `${awayTeamName} at ${homeTeamName}`,
+      subtitle: [formatSheetDate(game.game_date), game.game_time].filter(Boolean).join(" \u00b7 "),
+      teams: [bench(game.away_team_id, awayTeamName), bench(game.home_team_id, homeTeamName)],
+      fileName: `outlaw-lineup-${game.game_date}-${fileSlug(awayTeamName)}-at-${fileSlug(homeTeamName)}.pdf`,
+    });
+  };
+
   const saveScore = async () => {
     setBusy(true);
     await postJSON("/api/admin/season/games", {
@@ -774,6 +795,15 @@ function GameRow({
           <div className="flex items-center justify-end gap-3">
             <button type="button" onClick={onToggleExpand} className="text-xs font-medium text-neutral-500 hover:text-neutral-900">
               {expanded ? "Hide stats" : "Player stats"}
+            </button>
+            <button
+              type="button"
+              disabled={gameRosters.length === 0}
+              title={gameRosters.length === 0 ? "No one is dressed for this game yet" : "Save the dressed lineup as a PDF"}
+              onClick={saveLineupPdf}
+              className="text-xs font-medium text-neutral-500 transition hover:text-neutral-900 disabled:opacity-40 disabled:hover:text-neutral-500"
+            >
+              Lineup PDF
             </button>
             {game.status === "final" ? (
               <button type="button" disabled={busy} onClick={revert} className="text-xs font-medium text-neutral-500 hover:text-neutral-900">

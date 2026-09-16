@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { LineupColumn, authHeaders, type PoolPlayer, type RosterPlayer } from "@/app/scorekeeper/lineup-column";
+import { downloadLineupPdf, fileSlug, formatSheetDate } from "@/lib/lineup-pdf";
 
 type UpcomingGame = {
   id: string;
@@ -31,10 +32,7 @@ type SheetData = {
   playerPool: PoolPlayer[];
 };
 
-function formatDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
+const formatDate = formatSheetDate;
 
 export function LineupManager({
   teamId,
@@ -175,14 +173,17 @@ export function LineupManager({
       ) : null}
 
       {data && side ? (
-        <LineupColumn
-          teamName={teamName}
-          roster={roster}
-          pool={pool}
-          busy={busy}
-          onToggle={(playerId, dressed) => act({ action: "toggle-player", teamId, playerId, dressed })}
-          onAddNew={(name) => act({ action: "add-new-player", teamId, name })}
-        />
+        <div className="space-y-3">
+          <LineupColumn
+            teamName={teamName}
+            roster={roster}
+            pool={pool}
+            busy={busy}
+            onToggle={(playerId, dressed) => act({ action: "toggle-player", teamId, playerId, dressed })}
+            onAddNew={(name) => act({ action: "add-new-player", teamId, name })}
+          />
+          <SaveLineupPdf teamName={teamName} roster={roster} game={current} />
+        </div>
       ) : null}
 
       <div className="grid gap-6 pt-4 md:grid-cols-2">
@@ -204,6 +205,51 @@ export function LineupManager({
         />
       </div>
     </section>
+  );
+}
+
+/** Print-ready game sheet of whoever is dressed right now. Dressed only — a
+ * lineup that still lists the guys who aren't coming isn't a lineup. */
+function SaveLineupPdf({
+  teamName,
+  roster,
+  game,
+}: {
+  teamName: string;
+  roster: RosterPlayer[];
+  game: UpcomingGame | null;
+}) {
+  const dressed = roster.filter((p) => p.dressed);
+  const when = game ? `${formatDate(game.date)}${game.time ? ` \u00b7 ${game.time}` : ""}` : "";
+  const versus = game ? `${game.home ? "vs" : "at"} ${game.opponent}` : "";
+
+  const save = () =>
+    downloadLineupPdf({
+      title: teamName,
+      subtitle: [when, versus].filter(Boolean).join(" \u00b7 ") || "Lineup",
+      teams: [
+        {
+          teamName,
+          players: dressed.map((p) => ({ jersey: p.jersey, name: p.name, position: p.position })),
+        },
+      ],
+      fileName: `outlaw-lineup-${fileSlug(teamName)}-${game?.date ?? "sheet"}.pdf`,
+    });
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+      <p className="text-xs text-neutral-500">
+        {dressed.length} dressed{game ? ` \u00b7 ${formatDate(game.date)} ${versus}` : ""}
+      </p>
+      <button
+        type="button"
+        onClick={save}
+        disabled={dressed.length === 0}
+        className="min-h-11 rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-40"
+      >
+        Save lineup PDF
+      </button>
+    </div>
   );
 }
 
