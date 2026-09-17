@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import type { ShameEntry } from "@/app/shame/entries";
 
 function formatBooked(iso: string): string {
@@ -36,15 +39,86 @@ export function ShameCard({ entry, priority }: { entry: ShameEntry; priority?: b
   );
 }
 
+/**
+ * The enlarged view. The cards crop to a booking-photo shape; the evidence
+ * itself is often a full sheet, so here it gets the whole frame uncropped.
+ */
+function ShameModal({ entry, onClose }: { entry: ShameEntry; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${entry.name} — ${entry.charge}`}
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/85 p-4 backdrop-blur-sm sm:p-8"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-4 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+      >
+        Close
+      </button>
+      <figure
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-full w-full max-w-3xl flex-col items-center gap-4"
+      >
+        <div className="relative max-h-[78vh] w-full flex-1">
+          <Image
+            src={`/shame/${entry.id}.jpg`}
+            alt={`Booking photo of ${entry.name}`}
+            width={1024}
+            height={1536}
+            sizes="(min-width: 768px) 768px, 100vw"
+            className="mx-auto max-h-[78vh] w-auto rounded-xl object-contain"
+          />
+        </div>
+        <figcaption className="text-center">
+          <p className="nameplate text-lg text-white">{entry.name}</p>
+          <p className="mt-1 text-sm text-white/70">{entry.charge}</p>
+          <p className="mt-2 text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">
+            Week {entry.week} · {formatBooked(entry.bookedOn)}
+          </p>
+        </figcaption>
+      </figure>
+    </div>
+  );
+}
+
 /** The wall itself — newest first, flowing left to right as the weeks stack up. */
 export function ShameWall({ entries }: { entries: ShameEntry[] }) {
+  const [open, setOpen] = useState<ShameEntry | null>(null);
   return (
-    <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-      {entries.map((entry, i) => (
-        <li key={`${entry.week}-${entry.id}`}>
-          <ShameCard entry={entry} priority={i === 0} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {entries.map((entry, i) => (
+          <li key={`${entry.week}-${entry.id}`}>
+            <button
+              type="button"
+              onClick={() => setOpen(entry)}
+              aria-label={`Enlarge ${entry.name} — ${entry.charge}`}
+              className="block w-full cursor-zoom-in text-left"
+            >
+              <ShameCard entry={entry} priority={i === 0} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {open ? <ShameModal entry={open} onClose={() => setOpen(null)} /> : null}
+    </>
   );
 }

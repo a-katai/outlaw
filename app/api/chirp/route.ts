@@ -13,8 +13,7 @@ const IP_MAX_PER_DAY = 25;
 const GLOBAL_WINDOW_MS = 60 * 60 * 1000;
 const GLOBAL_MAX_CHIRPS = 200;
 
-type ChirpBody = { body?: unknown; handle?: unknown };
-type ChirpRow = { id: string; handle: string | null; body: string; created_at: string };
+type ChirpBody = { body?: unknown; handle?: unknown; parentId?: unknown };
 
 function callerIp(req: NextRequest): string {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -47,10 +46,6 @@ function clean(value: string, max: number): string {
     .slice(0, max);
 }
 
-function toChirp(row: ChirpRow): Chirp {
-  return { id: row.id, handle: row.handle, body: row.body, createdAt: row.created_at };
-}
-
 export async function GET() {
   // Reads go through getChirps(), which uses the anon client — so RLS, not a
   // filter in this file, is what keeps a hidden chirp hidden.
@@ -72,10 +67,25 @@ export async function POST(req: NextRequest) {
   const body = typeof payload.body === "string" ? clean(payload.body, CHIRP_MAX_LENGTH) : "";
   if (!body) return NextResponse.json({ error: "Say something first." }, { status: 400 });
 
+  const parentId = typeof payload.parentId === "string" && payload.parentId ? payload.parentId : null;
+
   const rawHandle = typeof payload.handle === "string" ? clean(payload.handle, CHIRP_HANDLE_MAX_LENGTH) : "";
   const handle = rawHandle ? rawHandle.replace(/^@+/, "").slice(0, CHIRP_HANDLE_MAX_LENGTH) || null : null;
 
   const supabase = createAdminClient();
+
+  if (parentId) {
+    // One level only, and you can't reply to a chirp that's been taken down.
+    const { data: parent } = await supabase
+      .from("chirps")
+      .select("id, parent_id, hidden")
+      .eq("id", parentId)
+      .maybeSingle();
+    if (!parent || parent.hidden || parent.parent_id) {
+      return NextResponse.json({ error: "That chirp isn't there any more." }, { status: 400 });
+    }
+  }
+
   const ipHash = hashIp(callerIp(req));
   const now = Date.now();
 
@@ -107,11 +117,14 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("chirps")
-    .insert({ body, handle })
+    .insert({ body, handle, parent_id: parentId })
     .select("id, handle, body, created_at")
     .single();
   if (error || !data) {
     return NextResponse.json({ error: "That didn't post. Try again." }, { status: 500 });
   }
-  return NextResponse.json({ chirp: toChirp(data as ChirpRow) }, { status: 201 });
+  const chirp: Chirp = {
+    id: data.id, handle: data.handle, body: data.body, createdAt: data.created_at, replies: [],
+  };
+  return NextResponse.json({ chirp, parentId }, { status: 201 });
 }

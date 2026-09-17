@@ -126,11 +126,13 @@ function PhaseStrip() {
   );
 }
 
-function LatestResultRow({ game }: { game: LiveGame }) {
+function LatestResultRow({ game, label }: { game: LiveGame; label?: boolean }) {
   const homeWins = (game.homeScore as number) > (game.awayScore as number);
   return (
     <Link href={`/games/${game.id}`} className="group flex items-baseline justify-between gap-6 py-4">
-      <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Latest</span>
+      <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+        {label ? "Latest" : ""}
+      </span>
       <span className="text-right text-sm font-medium text-neutral-700 transition group-hover:text-neutral-900">
         <span className={homeWins ? "text-neutral-500" : "font-semibold text-neutral-900"}>
           {game.awayTeam} {game.awayScore}
@@ -255,7 +257,10 @@ export default async function Home() {
   const nextNight = upcoming.length ? upcoming.filter((g) => g.date === upcoming[0].date) : [];
   const finals = games.filter((g) => g.status === "final" && g.gameType === "regular");
   const hasFinals = finals.length > 0;
-  const latest = hasFinals ? sortChronological(finals)[finals.length - 1] : null;
+  const played = sortChronological(finals);
+  const latestNight = hasFinals
+    ? played.filter((g) => g.date === played[played.length - 1].date)
+    : [];
 
   return (
     <section className="space-y-6">
@@ -269,10 +274,12 @@ export default async function Home() {
         </div>
       )}
 
-      {hasFinals && latest ? (
+      {hasFinals && latestNight.length ? (
         <div className="mx-auto max-w-2xl">
           <div className="divide-y divide-black/[0.07] border-y border-black/[0.07]">
-            <LatestResultRow game={latest} />
+            {latestNight.map((game, i) => (
+              <LatestResultRow key={game.id} game={game} label={i === 0} />
+            ))}
           </div>
           {stars?.stars.length ? (
             <div className="mt-8">

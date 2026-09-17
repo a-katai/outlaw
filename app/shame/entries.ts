@@ -19,6 +19,14 @@ export type ShameEntry = {
 
 export const SHAME_ENTRIES: ShameEntry[] = [
   {
+    id: "tony-katai",
+    name: "Tony Katai",
+    charge: "Moldy jock strap",
+    bookedOn: "2026-09-16",
+    week: 2,
+    team: "Toe Dragons",
+  },
+  {
     id: "jeff-wesley",
     name: "Jeff Wesley",
     charge: "Being too nice",
