@@ -6,10 +6,9 @@ import { AdminState, fetchAdminState } from "./admin-api";
 import { AdminDraftTab } from "./admin-draft-tab";
 import { AdminPaymentsTab } from "./admin-payments-tab";
 import { AdminSeasonTab } from "./admin-season-tab";
-import { AdminChirpTab } from "./admin-chirp-tab";
 import { fetchSeasonAdminState, type SeasonAdminState } from "./admin-season-api";
 
-type Tab = "draft" | "payments" | "season" | "chirp";
+type Tab = "draft" | "payments" | "season";
 
 export function AdminDashboard() {
   const router = useRouter();
@@ -70,7 +69,6 @@ export function AdminDashboard() {
             { key: "draft", label: "Draft control" },
             { key: "season", label: "Season" },
             { key: "payments", label: "Payments ledger" },
-            { key: "chirp", label: "Chirp" },
           ] as { key: Tab; label: string }[]
         ).map((t) => (
           <button
@@ -96,8 +94,6 @@ export function AdminDashboard() {
         ) : (
           <AdminSeasonTab state={seasonState} refetch={refetchSeason} />
         )
-      ) : tab === "chirp" ? (
-        <AdminChirpTab />
       ) : (
         <AdminPaymentsTab state={state} refetch={refetch} />
       )}

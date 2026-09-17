@@ -18,7 +18,6 @@ const primaryLinks = [
 const secondaryLinks = [
   { href: "/players", label: "Players" },
   { href: "/playoffs", label: "Playoffs" },
-  { href: "/shame", label: "Wall of Shame" },
   { href: "/payments", label: "Donate" },
 ];
 

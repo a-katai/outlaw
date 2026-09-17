@@ -1,14 +1,13 @@
 import type { MetadataRoute } from "next";
 
 /**
- * The Wall of Shame is a joke among teammates and stays out of search results
- * — a guy's name next to a fake charge is funny in the room and not funny in
- * a search for him. `public/shame/*.jpg` serves under the same path prefix as
- * the route, so one rule covers the page and the photos.
+ * Nothing to hide any more — /shame is gone and 404s, which is what actually
+ * gets it dropped from an index. A Disallow would have blocked the recrawl
+ * that discovers the 404, so the rule came off with the page.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: { userAgent: "*", allow: "/", disallow: "/shame" },
+    rules: { userAgent: "*", allow: "/" },
     host: "https://www.outlawhl.com",
   };
 }

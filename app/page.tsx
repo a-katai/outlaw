@@ -5,10 +5,6 @@ import { getThreeStars, type ThreeStars } from "@/lib/three-stars";
 import { getTeamColors, type TeamStanding } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { formatGameDate, sortChronological, splitTimeRink } from "@/app/components/next-game-card";
-import { ShameWall } from "@/app/components/shame-wall";
-import { SHAME_ENTRIES } from "@/app/shame/entries";
-import { ChirpBox } from "@/app/components/chirp-box";
-import { getChirps } from "@/lib/chirps";
 
 const LOGO = "/ohl_logo_2.png";
 
@@ -215,40 +211,8 @@ function StandingsStrip({ standings }: { standings: TeamStanding[] }) {
   );
 }
 
-/** Wall of Shame — one card a week, newest first, the row growing all season. */
-function ShameStrip() {
-  if (SHAME_ENTRIES.length === 0) return null;
-  const entries = [...SHAME_ENTRIES].sort((a, b) => b.week - a.week);
-  return (
-    <div className="hero-rise-late mx-auto max-w-2xl pt-4">
-      <div className="flex items-baseline justify-between pb-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Wall of shame</span>
-        <Link href="/shame" className="text-xs font-medium text-neutral-400 transition hover:text-neutral-700">
-          The wall →
-        </Link>
-      </div>
-      <ShameWall entries={entries} />
-    </div>
-  );
-}
-
-/** OHL Chirp — the anonymous board. Unlike the wall it always renders: an
- * empty box asking for the first chirp is the point. */
-function ChirpStrip({ chirps }: { chirps: Awaited<ReturnType<typeof getChirps>> }) {
-  return (
-    <div className="hero-rise-late mx-auto max-w-2xl pt-4">
-      <div className="flex items-baseline justify-between pb-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">OHL Chirp</span>
-        <span className="text-xs font-medium text-neutral-400">Anonymous</span>
-      </div>
-      <ChirpBox initial={chirps} />
-    </div>
-  );
-}
-
 export default async function Home() {
   const season = await getActiveSeasonLive();
-  const chirps = await getChirps();
   const stars = season ? await getThreeStars(season.id) : null;
   const games = season?.games ?? [];
   const upcoming = sortChronological(games.filter((g) => g.status !== "final"));
@@ -293,10 +257,6 @@ export default async function Home() {
       ) : (
         <PhaseStrip />
       )}
-
-      <ShameStrip />
-
-      <ChirpStrip chirps={chirps} />
     </section>
   );
 }
