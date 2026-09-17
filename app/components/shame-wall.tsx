@@ -9,14 +9,9 @@ function formatBooked(iso: string): string {
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-/** The placard line — the name on the full wall, the team everywhere else. */
-function placard(entry: ShameEntry): string {
-  return entry.name ?? entry.team ?? "Booked";
-}
-
 /**
  * One booking card: the photo, a black placard across the bottom carrying the
- * name and the charge, and the week it was earned. Sized by its column, so
+ * team and the charge, and the week it was earned. Sized by its column, so
  * the same card works in the home strip and on the full wall.
  */
 export function ShameCard({ entry, priority }: { entry: ShameEntry; priority?: boolean }) {
@@ -32,7 +27,7 @@ export function ShameCard({ entry, priority }: { entry: ShameEntry; priority?: b
           priority={priority}
         />
         <div className="absolute inset-x-0 bottom-0 bg-neutral-900/92 px-3 py-2 text-white backdrop-blur-sm">
-          <p className="nameplate text-sm leading-tight">{placard(entry)}</p>
+          <p className="nameplate text-sm leading-tight">{entry.team}</p>
           <p className="mt-0.5 text-xs leading-snug text-white/70">{entry.charge}</p>
         </div>
       </div>
@@ -109,7 +104,7 @@ function ShameModal({ entry, onClose }: { entry: ShameEntry; onClose: () => void
             />
           </div>
           <figcaption className="pb-2 text-center">
-            <p className="nameplate text-lg text-white">{placard(entry)}</p>
+            <p className="nameplate text-lg text-white">{entry.team}</p>
             <p className="mt-1 text-sm text-white/70">{entry.charge}</p>
             <p className="mt-2 text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">
               Week {entry.week} · {formatBooked(entry.bookedOn)}

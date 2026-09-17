@@ -6,7 +6,7 @@ import { getTeamColors, type TeamStanding } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { formatGameDate, sortChronological, splitTimeRink } from "@/app/components/next-game-card";
 import { ShameWall } from "@/app/components/shame-wall";
-import { SHAME_ENTRIES, redact } from "@/app/shame/entries";
+import { SHAME_ENTRIES } from "@/app/shame/entries";
 import { ChirpBox } from "@/app/components/chirp-box";
 import { getChirps } from "@/lib/chirps";
 
@@ -218,8 +218,7 @@ function StandingsStrip({ standings }: { standings: TeamStanding[] }) {
 /** Wall of Shame — one card a week, newest first, the row growing all season. */
 function ShameStrip() {
   if (SHAME_ENTRIES.length === 0) return null;
-  // The home page is indexed, so the strip only ever sees redacted copies.
-  const entries = redact([...SHAME_ENTRIES].sort((a, b) => b.week - a.week));
+  const entries = [...SHAME_ENTRIES].sort((a, b) => b.week - a.week);
   return (
     <div className="hero-rise-late mx-auto max-w-2xl pt-4">
       <div className="flex items-baseline justify-between pb-3">
