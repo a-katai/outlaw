@@ -1,7 +1,7 @@
 import { createHmac } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { CHIRP_FEED_LIMIT, CHIRP_HANDLE_MAX_LENGTH, CHIRP_MAX_LENGTH, type Chirp } from "@/lib/chirps";
+import { CHIRP_HANDLE_MAX_LENGTH, CHIRP_MAX_LENGTH, getChirps, type Chirp } from "@/lib/chirps";
 
 // Rate-limit thresholds. The board is anonymous and unauthenticated, so the
 // per-IP windows are what keep one bored skater from owning the whole page,
@@ -52,15 +52,13 @@ function toChirp(row: ChirpRow): Chirp {
 }
 
 export async function GET() {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("chirps")
-    .select("id, handle, body, created_at")
-    .eq("hidden", false)
-    .order("created_at", { ascending: false })
-    .limit(CHIRP_FEED_LIMIT);
-  if (error) return NextResponse.json({ error: "Could not load the board." }, { status: 500 });
-  return NextResponse.json({ chirps: ((data ?? []) as ChirpRow[]).map(toChirp) });
+  // Reads go through getChirps(), which uses the anon client — so RLS, not a
+  // filter in this file, is what keeps a hidden chirp hidden.
+  try {
+    return NextResponse.json({ chirps: await getChirps() });
+  } catch {
+    return NextResponse.json({ error: "Could not load the board." }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

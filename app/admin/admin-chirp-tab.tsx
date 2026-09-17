@@ -68,7 +68,7 @@ export function AdminChirpTab() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="text-xs font-semibold text-neutral-900">{chirp.handle ?? "Anonymous"}</span>
-                  <span className="text-[11px] tabular-nums text-neutral-400">{chirpAge(chirp.createdAt)}</span>
+                  <span suppressHydrationWarning className="text-[11px] tabular-nums text-neutral-400">{chirpAge(chirp.createdAt)}</span>
                   {chirp.hidden ? (
                     <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Hidden</span>
                   ) : null}

@@ -92,7 +92,7 @@ export function ChirpBox({ initial }: { initial: Chirp[] }) {
             <li key={chirp.id} className="py-3">
               <div className="flex items-baseline gap-2">
                 <span className="nameplate text-xs text-neutral-900">{chirp.handle ?? "Anonymous"}</span>
-                <span className="text-[11px] tabular-nums text-neutral-400">{chirpAge(chirp.createdAt)}</span>
+                <span suppressHydrationWarning className="text-[11px] tabular-nums text-neutral-400">{chirpAge(chirp.createdAt)}</span>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-neutral-700">{chirp.body}</p>
             </li>
