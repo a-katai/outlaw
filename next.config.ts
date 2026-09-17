@@ -4,6 +4,22 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  async headers() {
+    return [
+      {
+        source: "/shame/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, noimageindex, nofollow, noarchive" },
+        ],
+      },
+      {
+        source: "/shame",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, noimageindex, nofollow, noarchive" },
+        ],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
