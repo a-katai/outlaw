@@ -166,7 +166,7 @@ function ThreeStarsStrip({ stars }: { stars: ThreeStars }) {
             <span className="flex shrink-0 items-baseline gap-4 text-xs text-neutral-500">
               {star.opponent ? <span className="hidden sm:inline">vs {star.opponent}</span> : null}
               <span className="text-sm font-semibold tabular-nums text-neutral-900">
-                {star.goals} G · {star.assists} A
+                {star.goalsAgainst !== null ? `${star.goalsAgainst} GA` : `${star.goals} G · ${star.assists} A`}
               </span>
             </span>
           </Link>

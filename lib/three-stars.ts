@@ -10,6 +10,8 @@ export type Star = {
   gameId: string | null;
   goals: number;
   assists: number;
+  /** Goalie star: goals against in that game (null for skaters). */
+  goalsAgainst: number | null;
 };
 
 export type ThreeStars = { weekDate: string; stars: Star[] };
@@ -18,8 +20,8 @@ type StarRow = {
   rank: number;
   week_date: string;
   game_id: string | null;
-  player: { id: string; name: string } | null;
-  game: { id: string; home_team_id: string; away_team_id: string } | null;
+  player: { id: string; name: string; position: string | null } | null;
+  game: { id: string; home_team_id: string; away_team_id: string; home_score: number | null; away_score: number | null } | null;
 };
 
 /** The most recent week's three stars for a season, with each star's line from that game. */
@@ -36,7 +38,7 @@ export const getThreeStars = cache(async (seasonId: string): Promise<ThreeStars 
 
   const { data } = await supabase
     .from("three_stars")
-    .select("rank,week_date,game_id,player:players(id,name),game:games(id,home_team_id,away_team_id)")
+    .select("rank,week_date,game_id,player:players(id,name,position),game:games(id,home_team_id,away_team_id,home_score,away_score)")
     .eq("season_id", seasonId)
     .eq("week_date", latest.week_date)
     .order("rank", { ascending: true });
@@ -44,8 +46,11 @@ export const getThreeStars = cache(async (seasonId: string): Promise<ThreeStars 
   if (!rows.length) return null;
 
   const gameIds = rows.map((r) => r.game_id).filter((id): id is string => Boolean(id));
-  const [teamsRes, statsRes] = await Promise.all([
+  const [teamsRes, rostersRes, statsRes] = await Promise.all([
     supabase.from("teams").select("id,name").eq("season_id", seasonId),
+    gameIds.length
+      ? supabase.from("game_rosters").select("game_id,player_id,team_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string }[] }),
     gameIds.length
       ? supabase.from("game_stats").select("game_id,player_id,team_id,goals,assists").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; player_id: string; team_id: string; goals: number; assists: number }[] }),
@@ -56,7 +61,14 @@ export const getThreeStars = cache(async (seasonId: string): Promise<ThreeStars 
     .filter((r) => r.player)
     .map((r) => {
       const line = (statsRes.data ?? []).find((s) => s.game_id === r.game_id && s.player_id === r.player!.id);
-      const teamId = line?.team_id ?? null;
+      // A goalie (or any star without a scoring line) is placed by the game roster instead.
+      const dressed = (rostersRes.data ?? []).find((g) => g.game_id === r.game_id && g.player_id === r.player!.id);
+      const teamId = line?.team_id ?? dressed?.team_id ?? null;
+      const isGoalie = r.player!.position === "G";
+      const goalsAgainst =
+        isGoalie && r.game && teamId
+          ? (r.game.home_team_id === teamId ? r.game.away_score : r.game.home_score)
+          : null;
       const opponentId = r.game && teamId ? (r.game.home_team_id === teamId ? r.game.away_team_id : r.game.home_team_id) : null;
       return {
         rank: r.rank,
@@ -67,6 +79,7 @@ export const getThreeStars = cache(async (seasonId: string): Promise<ThreeStars 
         gameId: r.game_id,
         goals: line?.goals ?? 0,
         assists: line?.assists ?? 0,
+        goalsAgainst,
       };
     });
   return { weekDate: latest.week_date, stars };
