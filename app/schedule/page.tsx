@@ -3,7 +3,6 @@ import Link from "next/link";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
 import {
   formatGameDate,
-  NextGameCard,
   PlayoffBadge,
   recordFor,
   sortChronological,
@@ -11,6 +10,7 @@ import {
   TeamMarker,
   timeSortKey,
 } from "@/app/components/next-game-card";
+import { NightSlate } from "@/app/components/night-slate";
 
 export const dynamic = "force-dynamic";
 
@@ -60,69 +60,84 @@ function groupByMonth(list: LiveGame[]): MonthGroup[] {
   return months;
 }
 
-function GameRow({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<string, string> | null }) {
+function TeamLine({
+  name,
+  prefix,
+  record,
+  score,
+  dim,
+}: {
+  name: string;
+  prefix: string;
+  record: string | null;
+  score: number | null;
+  dim: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="w-4 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{prefix}</span>
+      <TeamMarker name={name} size={18} dotSize={8} />
+      <span className={`truncate ${dim ? "text-neutral-400" : "font-medium text-neutral-900"}`}>{name}</span>
+      {record ? <span className="hidden shrink-0 text-xs text-neutral-400 sm:inline">{record}</span> : null}
+      {score !== null ? (
+        <span className={`ml-auto w-6 shrink-0 text-right text-base font-semibold tabular-nums ${dim ? "text-neutral-400" : "text-neutral-900"}`}>
+          {score}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** One game on one hairline row: when/where on the left, both teams stacked, scores on the right once final. */
+function ScheduleRow({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<string, string> | null }) {
   const isFinal = game.status === "final" && game.homeScore !== null && game.awayScore !== null;
   const isLive = game.status === "live";
   const homeWins = isFinal && (game.homeScore as number) > (game.awayScore as number);
   const awayWins = isFinal && (game.awayScore as number) > (game.homeScore as number);
-
+  const tie = isFinal && game.homeScore === game.awayScore;
   const { time, rink } = splitTimeRink(game.time);
-  const awayRecord = recordFor(game.awayTeam, recordsByTeam);
-  const homeRecord = recordFor(game.homeTeam, recordsByTeam);
-
-  const awayNameClass = isFinal ? (awayWins ? "font-semibold text-neutral-900" : "font-medium text-neutral-400") : "font-medium text-neutral-900";
-  const homeNameClass = isFinal ? (homeWins ? "font-semibold text-neutral-900" : "font-medium text-neutral-400") : "font-medium text-neutral-900";
+  const rinkShort = rink?.replace(/^rink\s+/i, "") ?? null;
 
   return (
-    <Link href={`/games/${game.id}`} className="group flex items-center justify-between gap-4 px-5 py-4 transition hover:bg-neutral-50/80">
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex items-center gap-2 text-base">
-          <TeamMarker name={game.awayTeam} size={24} dotSize={10} />
-          <span className={`${awayNameClass} truncate`}>{game.awayTeam}</span>
-          {awayRecord ? <span className="shrink-0 text-xs font-medium text-neutral-400">{awayRecord}</span> : null}
-        </div>
-        <div className="flex items-center gap-2 text-base">
-          <span className="w-2.5 shrink-0 text-center text-[10px] font-semibold uppercase tracking-wide text-neutral-400">at</span>
-          <span className={`${homeNameClass} truncate`}>{game.homeTeam}</span>
-          {homeRecord ? <span className="shrink-0 text-xs font-medium text-neutral-400">{homeRecord}</span> : null}
-        </div>
-        {game.gameType === "playoff" ? <PlayoffBadge /> : null}
-        {game.note ? <p className="text-xs text-neutral-500">{game.note}</p> : null}
-      </div>
-
-      <div className="shrink-0 text-right">
+    <Link href={`/games/${game.id}`} className="group flex items-center gap-4 py-2.5 transition hover:bg-black/[0.02]">
+      <div className="w-[4.5rem] shrink-0 text-xs leading-tight">
         {isFinal ? (
           <>
-            <div className="flex items-center justify-end gap-2 text-xl font-semibold tabular-nums sm:text-2xl">
-              <span className={awayWins ? "text-neutral-900" : "text-neutral-400"}>{game.awayScore}</span>
-              <span className="text-neutral-300">–</span>
-              <span className={homeWins ? "text-neutral-900" : "text-neutral-400"}>{game.homeScore}</span>
-            </div>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Final</p>
+            <span className="font-semibold uppercase tracking-[0.15em] text-neutral-500">Final</span>
+            {tie ? <span className="block text-neutral-400">Tie</span> : null}
           </>
         ) : isLive ? (
-          <>
-            <p className="flex items-center justify-end gap-1.5 text-xs font-semibold text-rose-600">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-600" />
-              </span>
-              Live
-            </p>
-            <div className="mt-1 flex items-center justify-end gap-2 text-xl font-semibold tabular-nums text-neutral-900 sm:text-2xl">
-              {game.awayScore ?? 0}–{game.homeScore ?? 0}
-            </div>
-          </>
+          <span className="flex items-center gap-1.5 font-semibold text-rose-600">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-600" />
+            </span>
+            Live
+          </span>
         ) : (
           <>
-            {time ? (
-              <p className="text-lg font-semibold tabular-nums text-neutral-900 sm:text-xl">{time}</p>
-            ) : (
-              <p className="text-lg font-semibold text-neutral-400 sm:text-xl">TBD</p>
-            )}
-            {rink ? <p className="mt-0.5 text-xs text-neutral-500">{rink}</p> : null}
+            <span className="font-semibold tabular-nums text-neutral-900">{time ?? "TBD"}</span>
+            {rinkShort ? <span className="block text-neutral-400">Rink {rinkShort}</span> : null}
           </>
         )}
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <TeamLine
+          name={game.awayTeam}
+          prefix=""
+          record={isFinal ? null : recordFor(game.awayTeam, recordsByTeam)}
+          score={isFinal ? (game.awayScore as number) : isLive ? (game.awayScore ?? 0) : null}
+          dim={isFinal && !awayWins && !tie}
+        />
+        <TeamLine
+          name={game.homeTeam}
+          prefix="at"
+          record={isFinal ? null : recordFor(game.homeTeam, recordsByTeam)}
+          score={isFinal ? (game.homeScore as number) : isLive ? (game.homeScore ?? 0) : null}
+          dim={isFinal && !homeWins && !tie}
+        />
+        {game.gameType === "playoff" ? <PlayoffBadge /> : null}
+        {game.note ? <p className="text-xs text-neutral-500">{game.note}</p> : null}
       </div>
     </Link>
   );
@@ -130,22 +145,20 @@ function GameRow({ game, recordsByTeam }: { game: LiveGame; recordsByTeam: Map<s
 
 function MonthSchedule({ months, recordsByTeam }: { months: MonthGroup[]; recordsByTeam: Map<string, string> | null }) {
   return (
-    <div className="space-y-8">
+    <div className="max-w-3xl space-y-7">
       {months.map((month) => (
-        <div key={month.monthKey} className="space-y-4">
+        <div key={month.monthKey}>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">{month.monthLabel}</p>
-          <div className="space-y-5">
-            {month.dates.map(([date, list]) => (
-              <div key={date}>
-                <p className="mb-2 text-sm font-medium text-neutral-500">{formatGameDate(date)}</p>
-                <div className="glass-card divide-y divide-black/5 overflow-hidden rounded-3xl">
-                  {list.map((g) => (
-                    <GameRow key={g.id} game={g} recordsByTeam={recordsByTeam} />
-                  ))}
-                </div>
+          {month.dates.map(([date, list]) => (
+            <div key={date} className="mt-3">
+              <p className="pb-1.5 text-sm font-medium text-neutral-700">{formatGameDate(date)}</p>
+              <div className="divide-y divide-black/[0.06] border-y border-black/[0.07]">
+                {list.map((g) => (
+                  <ScheduleRow key={g.id} game={g} recordsByTeam={recordsByTeam} />
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -192,8 +205,10 @@ export default async function SchedulePage() {
   const seasonHasFinals = season.standings.some((s) => s.gp > 0);
   const recordsByTeam = seasonHasFinals ? new Map(season.standings.map((s) => [s.team, `${s.wins}-${s.losses}-${s.ties}`])) : null;
 
-  const nextGame = upcoming[0] ?? null;
-  const upcomingMonths = groupByMonth(upcoming);
+  // Two games every Wednesday: feature the whole next night, then list the rest.
+  const nextNight = upcoming.length ? upcoming.filter((g) => g.date === upcoming[0].date) : [];
+  const rest = upcoming.filter((g) => g.date !== upcoming[0]?.date);
+  const upcomingMonths = groupByMonth(rest);
   const completedMonths = groupByMonth(completed);
 
   return (
@@ -206,27 +221,37 @@ export default async function SchedulePage() {
       {live.length > 0 ? (
         <div className="space-y-5">
           <h2 className="text-2xl font-semibold text-neutral-900">Live now</h2>
-          <div className="glass-card divide-y divide-black/5 overflow-hidden rounded-3xl">
+          <div className="divide-y divide-black/[0.06] border-y border-black/[0.07]">
             {live.map((g) => (
-              <GameRow key={g.id} game={g} recordsByTeam={recordsByTeam} />
+              <ScheduleRow key={g.id} game={g} recordsByTeam={recordsByTeam} />
             ))}
           </div>
         </div>
       ) : null}
 
-      {nextGame ? <NextGameCard game={nextGame} recordsByTeam={recordsByTeam} /> : null}
-
-      {upcomingMonths.length > 0 ? (
-        <div className="space-y-5">
-          <h2 className="text-2xl font-semibold text-neutral-900">Upcoming</h2>
-          <MonthSchedule months={upcomingMonths} recordsByTeam={recordsByTeam} />
+      {nextNight.length ? (
+        <div>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Next up</h2>
+            <span className="text-xs text-neutral-400">{formatGameDate(nextNight[0].date)}</span>
+          </div>
+          <div className="mt-2 border-y border-black/[0.07]">
+            <NightSlate games={nextNight} />
+          </div>
         </div>
       ) : null}
 
       {completedMonths.length > 0 ? (
-        <div className="space-y-5">
+        <div className="space-y-4">
           <h2 className="text-2xl font-semibold text-neutral-900">Results</h2>
           <MonthSchedule months={completedMonths} recordsByTeam={recordsByTeam} />
+        </div>
+      ) : null}
+
+      {upcomingMonths.length > 0 ? (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold text-neutral-900">Upcoming</h2>
+          <MonthSchedule months={upcomingMonths} recordsByTeam={recordsByTeam} />
         </div>
       ) : null}
     </section>

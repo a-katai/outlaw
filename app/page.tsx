@@ -3,52 +3,14 @@ import Link from "next/link";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
 import { getStarsForGames } from "@/lib/three-stars";
 import { FinalScoreboard } from "@/app/components/final-scoreboard";
-import { getTeamColors, type TeamStanding } from "@/lib/league-data";
+import { type TeamStanding } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { formatGameDate, sortChronological, splitTimeRink } from "@/app/components/next-game-card";
+import { NightSlate } from "@/app/components/night-slate";
 
 const LOGO = "/ohl_logo_2.png";
 
 export const dynamic = "force-dynamic";
-
-/** One side of a matchup — logo over a colour-underlined nameplate. */
-function MatchupSide({ name }: { name: string }) {
-  const colors = getTeamColors(name);
-  return (
-    <div className="flex w-24 flex-col items-center gap-2 sm:w-28 md:w-32">
-      {teamLogo(name) ? (
-        <>
-          <div className="md:hidden"><TeamLogo name={name} size={40} /></div>
-          <div className="hidden md:block"><TeamLogo name={name} size={52} /></div>
-        </>
-      ) : null}
-      <p
-        className="nameplate text-xs leading-none text-neutral-900 sm:text-sm md:text-base"
-        style={{ borderBottom: `2px solid ${colors.border}`, paddingBottom: "0.3rem" }}
-      >
-        {name}
-      </p>
-    </div>
-  );
-}
-
-/** A compact matchup cell — two of these sit side by side as the night's slate. */
-function MatchupCell({ game }: { game: LiveGame }) {
-  const { time, rink } = splitTimeRink(game.time);
-  return (
-    <Link href={`/games/${game.id}`} className="group block px-2 py-6 text-center">
-      <div className="flex items-center justify-center gap-2 sm:gap-3 md:gap-4">
-        <MatchupSide name={game.awayTeam} />
-        <span className="nameplate self-center pb-5 text-xs text-neutral-300">at</span>
-        <MatchupSide name={game.homeTeam} />
-      </div>
-      <p className="mt-4 text-xs font-medium text-neutral-600 sm:text-sm">
-        {time ? <span className="text-neutral-900">{time}</span> : null}
-        {rink ? <span className="text-neutral-500"> · {rink}</span> : null}
-      </p>
-    </Link>
-  );
-}
 
 /**
  * Center-ice hero: the league mark sits at the center-ice dot inside a faint
@@ -86,10 +48,8 @@ function CenterIceHero({ games }: { games: LiveGame[] }) {
 
       {/* Both Wednesday games on one line; they stack only on the narrowest
           phones, where two nameplates side by side would collide. */}
-      <div className="relative mx-auto mt-2 grid max-w-3xl grid-cols-1 divide-y divide-black/[0.07] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-        {games.map((game) => (
-          <MatchupCell key={game.id} game={game} />
-        ))}
+      <div className="relative mx-auto mt-2 max-w-3xl">
+        <NightSlate games={games} />
       </div>
 
       <Link
