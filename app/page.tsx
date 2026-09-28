@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getActiveSeasonLive, type LiveGame } from "@/lib/live-season";
-import { getThreeStars, type ThreeStars } from "@/lib/three-stars";
+import { getStarsForGames } from "@/lib/three-stars";
+import { FinalScoreboard } from "@/app/components/final-scoreboard";
 import { getTeamColors, type TeamStanding } from "@/lib/league-data";
 import { TeamLogo, teamLogo, teamSlug } from "@/lib/team-logos";
 import { formatGameDate, sortChronological, splitTimeRink } from "@/app/components/next-game-card";
@@ -122,60 +123,6 @@ function PhaseStrip() {
   );
 }
 
-function LatestResultRow({ game, label }: { game: LiveGame; label?: boolean }) {
-  const homeWins = (game.homeScore as number) > (game.awayScore as number);
-  return (
-    <Link href={`/games/${game.id}`} className="group flex items-baseline justify-between gap-6 py-4">
-      <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-        {label ? "Latest" : ""}
-      </span>
-      <span className="text-right text-sm font-medium text-neutral-700 transition group-hover:text-neutral-900">
-        <span className={homeWins ? "text-neutral-500" : "font-semibold text-neutral-900"}>
-          {game.awayTeam} {game.awayScore}
-        </span>
-        <span className="text-neutral-300"> – </span>
-        <span className={homeWins ? "font-semibold text-neutral-900" : "text-neutral-500"}>
-          {game.homeScore} {game.homeTeam}
-        </span>
-        <span className="text-neutral-400"> · Final</span>{" "}
-        <span className="text-neutral-300 transition group-hover:text-neutral-500">→</span>
-      </span>
-    </Link>
-  );
-}
-
-/** The week's three stars — same hairline list as the standings, one row per star. */
-function ThreeStarsStrip({ stars }: { stars: ThreeStars }) {
-  const ordinal = ["1st", "2nd", "3rd"];
-  return (
-    <div className="hero-rise-late mx-auto max-w-2xl">
-      <div className="flex items-baseline justify-between pb-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Three stars</span>
-        <span className="text-xs text-neutral-400">{formatGameDate(stars.weekDate)}</span>
-      </div>
-      <div className="divide-y divide-black/[0.07] border-y border-black/[0.07]">
-        {stars.stars.map((star) => (
-          <Link key={star.rank} href={`/players/${star.playerId}`} className="group flex items-center justify-between gap-4 py-3">
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="w-6 shrink-0 text-xs font-medium tabular-nums text-neutral-400">{ordinal[star.rank - 1]}</span>
-              {teamLogo(star.team) ? <TeamLogo name={star.team} size={22} /> : null}
-              <span className="truncate text-sm font-medium text-neutral-800 transition group-hover:text-neutral-900">
-                {star.playerName}
-              </span>
-            </span>
-            <span className="flex shrink-0 items-baseline gap-4 text-xs text-neutral-500">
-              {star.opponent ? <span className="hidden sm:inline">vs {star.opponent}</span> : null}
-              <span className="text-sm font-semibold tabular-nums text-neutral-900">
-                {star.goalsAgainst !== null ? `${star.goalsAgainst} GA` : `${star.goals} G · ${star.assists} A`}
-              </span>
-            </span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function StandingsStrip({ standings }: { standings: TeamStanding[] }) {
   return (
     <div className="hero-rise-late mx-auto max-w-2xl">
@@ -213,7 +160,6 @@ function StandingsStrip({ standings }: { standings: TeamStanding[] }) {
 
 export default async function Home() {
   const season = await getActiveSeasonLive();
-  const stars = season ? await getThreeStars(season.id) : null;
   const games = season?.games ?? [];
   const upcoming = sortChronological(games.filter((g) => g.status !== "final"));
   // The league plays two games every Wednesday, so the hero shows the whole
@@ -225,6 +171,7 @@ export default async function Home() {
   const latestNight = hasFinals
     ? played.filter((g) => g.date === played[played.length - 1].date)
     : [];
+  const starsByGame = await getStarsForGames(latestNight.map((g) => g.id));
 
   return (
     <section className="space-y-6">
@@ -239,18 +186,27 @@ export default async function Home() {
       )}
 
       {hasFinals && latestNight.length ? (
-        <div className="mx-auto max-w-2xl">
-          <div className="divide-y divide-black/[0.07] border-y border-black/[0.07]">
-            {latestNight.map((game, i) => (
-              <LatestResultRow key={game.id} game={game} label={i === 0} />
+        <div className="hero-rise-late mx-auto max-w-3xl">
+          <div className="flex items-baseline justify-between px-1 pb-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Latest</span>
+            <span className="text-xs text-neutral-400">{formatGameDate(latestNight[0].date)}</span>
+          </div>
+          <div className="grid grid-cols-1 gap-y-8 border-y border-black/[0.07] py-5 sm:grid-cols-2 sm:gap-y-0">
+            {latestNight.map((game) => (
+              <div key={game.id} className="sm:first:pr-8 sm:last:border-l sm:last:border-black/[0.07] sm:last:pl-8">
+                <FinalScoreboard
+                  gameId={game.id}
+                  awayTeam={game.awayTeam}
+                  homeTeam={game.homeTeam}
+                  awayScore={game.awayScore as number}
+                  homeScore={game.homeScore as number}
+                  stars={starsByGame.get(game.id) ?? []}
+                  meta={splitTimeRink(game.time).rink}
+                />
+              </div>
             ))}
           </div>
-          {stars?.stars.length ? (
-            <div className="mt-8">
-              <ThreeStarsStrip stars={stars} />
-            </div>
-          ) : null}
-          <div className="mt-8">
+          <div className="mx-auto mt-8 max-w-2xl">
             <StandingsStrip standings={season?.standings ?? []} />
           </div>
         </div>

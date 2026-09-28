@@ -9,6 +9,9 @@ import { LiveGameFeed } from "./live-game-feed";
 import { GoalList } from "./goal-list";
 import { PenaltyList } from "./penalty-list";
 import { ShareScoreButton } from "./share-score-button";
+import { FinalScoreboard, lineScoreFromGoals } from "@/app/components/final-scoreboard";
+import { getStarsForGames } from "@/lib/three-stars";
+import { splitTimeRink } from "@/app/components/next-game-card";
 import type { VideoItem } from "@/app/components/video-gallery";
 import videosData from "@/videos-data.json";
 
@@ -143,8 +146,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
   const isFinal = game.status === "final" && game.homeScore !== null && game.awayScore !== null;
   const isLive = game.status === "live";
-  const homeWins = isFinal && (game.homeScore as number) > (game.awayScore as number);
-  const awayWins = isFinal && (game.awayScore as number) > (game.homeScore as number);
+  const stars = isFinal ? ((await getStarsForGames([game.id])).get(game.id) ?? []) : [];
 
   const videos = videosData as VideoItem[];
   const filmMatches = matchGameFilm(videos, { date: game.date, homeTeam: game.homeTeam, awayTeam: game.awayTeam });
@@ -209,24 +211,19 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       {!isFinal ? lineupsSection : null}
 
       {isFinal ? (
-        <div className="glass-card rounded-3xl p-8 text-center md:p-12">
-          <div className="flex items-center justify-center gap-6 md:gap-12">
-            <div>
-              <p className={`text-5xl font-semibold md:text-7xl ${awayWins ? "text-neutral-900" : "text-neutral-400"}`}>
-                {game.awayScore}
-              </p>
-              <p className="mt-2 text-sm font-medium text-neutral-500">{game.awayTeam}</p>
-            </div>
-            <span className="text-2xl text-neutral-300 md:text-4xl">–</span>
-            <div>
-              <p className={`text-5xl font-semibold md:text-7xl ${homeWins ? "text-neutral-900" : "text-neutral-400"}`}>
-                {game.homeScore}
-              </p>
-              <p className="mt-2 text-sm font-medium text-neutral-500">{game.homeTeam}</p>
-            </div>
-          </div>
-          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Final</p>
-          <div className="mt-5 flex justify-center">
+        <div className="glass-card rounded-3xl px-5 py-4 md:px-8 md:py-6">
+          <FinalScoreboard
+            gameId={game.id}
+            awayTeam={game.awayTeam}
+            homeTeam={game.homeTeam}
+            awayScore={game.awayScore as number}
+            homeScore={game.homeScore as number}
+            stars={stars}
+            lineScore={lineScoreFromGoals(game.goalEvents, game.homeTeamId)}
+            meta={splitTimeRink(game.time).rink}
+            large
+          />
+          <div className="mt-4 flex justify-end">
             <ShareScoreButton gameId={game.id} awayTeam={game.awayTeam} homeTeam={game.homeTeam} />
           </div>
         </div>
