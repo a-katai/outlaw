@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { FormEvent, useRef, useState } from "react";
-import { DUES_CHIPS, type AmountChip, type PaymentKind } from "@/lib/dues";
+import { DUES_CHIPS, SUB_FEE_CENTS, type AmountChip, type PaymentKind } from "@/lib/dues";
 
 type PlayerOption = { id: string; name: string };
 
@@ -170,8 +170,8 @@ export function PaymentsForm({
     if (!amountValid) return setError("Enter an amount greater than $0.");
 
     const amountCents = Math.round(amountNum * 100);
-    if (amountCents < 100 || amountCents > 100000) {
-      return setError("Amount must be between $1 and $1,000.");
+    if (amountCents < SUB_FEE_CENTS || amountCents > 100000) {
+      return setError("Amount must be between $25 and $1,000.");
     }
 
     const clover = cloverRef.current;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { CURRENT_SEASON, isPaymentKind, type PaymentKind } from "@/lib/dues";
+import { CURRENT_SEASON, SUB_FEE_CENTS, isPaymentKind, type PaymentKind } from "@/lib/dues";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SEASON = CURRENT_SEASON;
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
   if (!EMAIL_RE.test(email)) {
     return NextResponse.json({ ok: false, error: "Enter a valid email." }, { status: 400 });
   }
-  if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 100000) {
-    return NextResponse.json({ ok: false, error: "Amount must be between $1 and $1,000." }, { status: 400 });
+  if (!Number.isInteger(amountCents) || amountCents < SUB_FEE_CENTS || amountCents > 100000) {
+    return NextResponse.json({ ok: false, error: "Amount must be between $25 and $1,000." }, { status: 400 });
   }
   const kind: PaymentKind = isPaymentKind(body.kind) ? body.kind : "dues";
   if (!token || !token.startsWith("clv_")) {
