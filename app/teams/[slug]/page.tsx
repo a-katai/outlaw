@@ -160,11 +160,20 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                     {p.jersey != null ? `#${p.jersey}` : ""}
                   </span>
                   <span className="truncate">{p.name}</span>
+                  {p.injury ? (
+                    <span
+                      title={p.injury}
+                      className="shrink-0 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+                    >
+                      Injury
+                    </span>
+                  ) : null}
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs text-neutral-500">
                   {p.position ? (
                     <span className="rounded-full border border-black/10 px-2 py-0.5 font-semibold">{p.position}</span>
                   ) : null}
+                  {p.injury ? <span className="hidden text-red-600 sm:inline">{p.injury}</span> : null}
                   {p.rank ? <span>#{p.rank}</span> : null}
                 </span>
               </Link>

@@ -23,6 +23,7 @@ export type LiveRosterPlayer = {
   position: string | null;
   rank: number | null;
   jersey: number | null;
+  injury: string | null;
 };
 
 export type GameType = "regular" | "playoff";
@@ -496,10 +497,23 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   for (const t of teams) rosters[t.name] = [];
   if (teamIds.length) {
     const rosterPlayerIds = Array.from(new Set(picks.map((p) => p.player_id)));
+    // `injury` arrives with migration 0019; until it runs, fall back so rosters never blank.
     const rosterPlayersRes = rosterPlayerIds.length
-      ? await supabase.from("players").select("id,name,position,rank,jersey_number").in("id", rosterPlayerIds)
+      ? await supabase
+          .from("players")
+          .select("id,name,position,rank,jersey_number,injury")
+          .in("id", rosterPlayerIds)
+          .then(async (res) =>
+            res.error
+              ? await supabase
+                  .from("players")
+                  .select("id,name,position,rank,jersey_number")
+                  .in("id", rosterPlayerIds)
+                  .then((r) => ({ ...r, data: (r.data ?? []).map((p) => ({ ...p, injury: null as string | null })) }))
+              : res,
+          )
       : {
-          data: [] as { id: string; name: string; position: string | null; rank: number | null; jersey_number: number | null }[],
+          data: [] as { id: string; name: string; position: string | null; rank: number | null; jersey_number: number | null; injury: string | null }[],
         };
     const rosterPlayerById = new Map((rosterPlayersRes.data ?? []).map((p) => [p.id, p]));
     for (const pick of picks) {
@@ -512,6 +526,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
         position: player.position,
         rank: player.rank,
         jersey: player.jersey_number ?? null,
+        injury: player.injury ?? null,
       });
     }
     for (const name of Object.keys(rosters)) rosters[name].sort((a, b) => a.name.localeCompare(b.name));
