@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { isPaymentsAuthed } from "@/lib/payments-auth";
 import { PaymentsForm } from "./payments-form";
+import { PaymentsGate } from "./payments-gate";
 
 export const metadata: Metadata = {
   title: "League Dues | Outlaw Hockey League",
@@ -12,6 +14,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function PaymentsPage() {
+  const authed = await isPaymentsAuthed();
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("players")
@@ -23,7 +26,8 @@ export default async function PaymentsPage() {
     name: p.name as string,
   }));
 
-  const publicToken = process.env.CLOVER_PUBLIC_TOKEN ?? "";
+  // The Clover key only reaches the page once the device is signed in.
+  const publicToken = authed ? (process.env.CLOVER_PUBLIC_TOKEN ?? "") : "";
 
   return (
     <section className="space-y-8">
@@ -37,7 +41,7 @@ export default async function PaymentsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1.35fr_1fr]">
-        <PaymentsForm publicToken={publicToken} players={players} />
+        {authed ? <PaymentsForm publicToken={publicToken} players={players} /> : <PaymentsGate />}
 
         <aside className="glass-card h-fit rounded-3xl p-6 md:p-8">
           <h2 className="text-xl font-semibold text-neutral-900">Cash or Check</h2>

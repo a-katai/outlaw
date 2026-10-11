@@ -5,6 +5,8 @@ import { SUB_CHIPS, SUB_FEE_CENTS } from "@/lib/dues";
 import { getActiveSeasonLive } from "@/lib/live-season";
 import { getSubLine } from "@/lib/sub-line";
 import { PaymentsForm } from "@/app/payments/payments-form";
+import { PaymentsGate } from "@/app/payments/payments-gate";
+import { isPaymentsAuthed } from "@/lib/payments-auth";
 
 export const metadata: Metadata = {
   title: "Sub Fees | Outlaw Hockey League",
@@ -30,7 +32,8 @@ export default async function SubsPage() {
   ]);
 
   const players = (subsRes.data ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
-  const publicToken = process.env.CLOVER_PUBLIC_TOKEN ?? "";
+  const authed = await isPaymentsAuthed();
+  const publicToken = authed ? (process.env.CLOVER_PUBLIC_TOKEN ?? "") : "";
   const statsById = new Map((season?.subs ?? []).map((s) => [s.playerId, s]));
   const fee = SUB_FEE_CENTS / 100;
   const paidCount = line.filter((s) => s.paid).length;
@@ -55,16 +58,20 @@ export default async function SubsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-[1.35fr_1fr]">
-        <PaymentsForm
-          publicToken={publicToken}
-          players={players}
-          kind="sub"
-          chips={SUB_CHIPS}
-          title="Pay a Sub Fee"
-          namePlaceholder="Your name"
-          amountPlaceholder={fee.toFixed(2)}
-          receiptNote="You're in the paid line."
-        />
+        {authed ? (
+          <PaymentsForm
+            publicToken={publicToken}
+            players={players}
+            kind="sub"
+            chips={SUB_CHIPS}
+            title="Pay a Sub Fee"
+            namePlaceholder="Your name"
+            amountPlaceholder={fee.toFixed(2)}
+            receiptNote="You're in the paid line."
+          />
+        ) : (
+          <PaymentsGate />
+        )}
 
         <aside className="glass-card h-fit rounded-3xl p-6 md:p-8">
           <h2 className="text-xl font-semibold text-neutral-900">Cash at the Rink</h2>

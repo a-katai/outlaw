@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { isPaymentsAuthed } from "@/lib/payments-auth";
 import { CURRENT_SEASON, SUB_FEE_CENTS, isPaymentKind, type PaymentKind } from "@/lib/dues";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,6 +65,11 @@ function cloverErrorMessage(status: number, body: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Password gate first: no session, no Clover call, no attempt row.
+  if (!(await isPaymentsAuthed())) {
+    return NextResponse.json({ ok: false, error: "Enter the league password first." }, { status: 401 });
+  }
+
   let body: ChargeBody;
   try {
     body = await req.json();
