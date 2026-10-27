@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { teamLogo } from "./team-logos";
+import { getTeamColors } from "./league-data";
 
 // Shared building blocks for every app/**/opengraph-image.tsx route. These
 // run on the node runtime so they can read public/ assets straight off disk
@@ -80,3 +81,14 @@ export function DefaultLeagueCard() {
     </div>
   );
 }
+
+// Brand accents for the five teams (the approved card spec); anything else
+// falls back to the site's team palette.
+const ACCENT: Record<string, string> = {
+  trashers: "#2E5AAC",
+  "toe dragons": "#E03227",
+  "ghost pirates": "#10B981",
+  "tank fillers": "#111111",
+  "wednesday knights": "#F59E0B",
+};
+export const teamAccent = (team: string) => ACCENT[team.trim().toLowerCase()] ?? getTeamColors(team).border;

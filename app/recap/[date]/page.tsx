@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getMilestoneCardsFor } from "@/lib/milestones";
 import { getRecap, getRecapDates, longDate, shortDate, weekLabel } from "@/lib/recap";
 import { FinalScoreboard } from "@/app/components/final-scoreboard";
 import { getTeamColors } from "@/lib/league-data";
@@ -30,6 +31,7 @@ export default async function RecapPage({ params }: { params: Promise<{ date: st
   const { date } = await params;
   const [recap, dates] = await Promise.all([getRecap(date), getRecapDates()]);
   if (!recap) notFound();
+  const cards = await getMilestoneCardsFor(recap.milestones, date);
 
   const week = weekLabel(recap);
   const i = dates.indexOf(date);
@@ -129,6 +131,21 @@ export default async function RecapPage({ params }: { params: Promise<{ date: st
               </div>
             ))}
           </div>
+          {cards.length ? (
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-black/[0.05] pt-3 text-xs font-medium">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Cards</span>
+              {cards.map((c) => (
+                <a
+                  key={c.playerId}
+                  href={`/recap/${date}/milestone/${c.playerId}/card`}
+                  download={`ohl-milestone-${date}-${c.playerName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
+                  className="text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
+                >
+                  {c.playerName}
+                </a>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

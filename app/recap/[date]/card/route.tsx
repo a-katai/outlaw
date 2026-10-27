@@ -2,9 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 import { getRecap, shortDate, weekLabel, type RecapGame } from "@/lib/recap";
-import { getTeamColors } from "@/lib/league-data";
 import type { Star } from "@/lib/three-stars";
-import { DefaultLeagueCard, OG_COLORS, publicImageDataUri, teamLogoDataUri } from "@/lib/og-helpers";
+import { DefaultLeagueCard, OG_COLORS, publicImageDataUri, teamAccent, teamLogoDataUri } from "@/lib/og-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,16 +28,7 @@ function loadFonts() {
 const NAMEPLATE = "Barlow Condensed";
 const GREY = "#86868b";
 
-// Brand accents for the five teams (the approved card spec); anything else
-// falls back to the site's team palette.
-const ACCENT: Record<string, string> = {
-  trashers: "#2E5AAC",
-  "toe dragons": "#E03227",
-  "ghost pirates": "#10B981",
-  "tank fillers": "#111111",
-  "wednesday knights": "#F59E0B",
-};
-const accent = (team: string) => ACCENT[team.trim().toLowerCase()] ?? getTeamColors(team).border;
+const accent = teamAccent;
 
 const ROW_H = 92;
 const HDR_H = 30;
