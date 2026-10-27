@@ -149,7 +149,9 @@ export default async function Home() {
         <div className="hero-rise-late mx-auto max-w-3xl">
           <div className="flex items-baseline justify-between px-1 pb-3">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Latest</span>
-            <span className="text-xs text-neutral-400">{formatGameDate(latestNight[0].date)}</span>
+            <Link href={`/recap/${latestNight[0].date}`} className="text-xs text-neutral-400 transition hover:text-neutral-700">
+              {formatGameDate(latestNight[0].date)} · Recap →
+            </Link>
           </div>
           <div className="grid grid-cols-1 gap-y-8 border-y border-black/[0.07] py-5 sm:grid-cols-2 sm:gap-y-0">
             {latestNight.map((game) => (

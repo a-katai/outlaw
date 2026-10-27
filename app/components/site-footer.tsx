@@ -8,6 +8,8 @@ const columns = [
       { href: "/schedule", label: "Schedule" },
       { href: "/teams", label: "Teams" },
       { href: "/stats", label: "Stats" },
+      { href: "/recap", label: "Recap" },
+      { href: "/pickem", label: "Pick'em" },
       { href: "/players", label: "Players" },
       { href: "/playoffs", label: "Playoffs" },
     ],
