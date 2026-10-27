@@ -13,7 +13,6 @@ const primaryLinks = [
   { href: "/teams", label: "Teams" },
   { href: "/stats", label: "Stats" },
   { href: "/videos", label: "Video" },
-  { href: "/pickem", label: "Pick'em" },
 ];
 
 const secondaryLinks = [
