@@ -272,6 +272,58 @@ export function computeGoalieStats(
  *
  * Anon client is fine — every table involved is public-read.
  */
+// Standings: FINAL, regular-season games only. Playoff games never
+// touch the standings — they appear on game pages and /playoffs instead.
+export function computeStandings(teams: LiveTeam[], games: LiveGame[]): TeamStanding[] {
+  type TeamRecord = { gp: number; wins: number; losses: number; ties: number; gf: number; ga: number };
+  const recordByTeam = new Map<string, TeamRecord>(
+    teams.map((t) => [t.id, { gp: 0, wins: 0, losses: 0, ties: 0, gf: 0, ga: 0 }]),
+  );
+
+  for (const g of games) {
+    if (g.gameType !== "regular" || g.status !== "final" || g.homeScore === null || g.awayScore === null) continue;
+    const home = recordByTeam.get(g.homeTeamId);
+    const away = recordByTeam.get(g.awayTeamId);
+    if (!home || !away) continue;
+    home.gp += 1;
+    away.gp += 1;
+    home.gf += g.homeScore;
+    home.ga += g.awayScore;
+    away.gf += g.awayScore;
+    away.ga += g.homeScore;
+    if (g.homeScore > g.awayScore) {
+      home.wins += 1;
+      away.losses += 1;
+    } else if (g.awayScore > g.homeScore) {
+      away.wins += 1;
+      home.losses += 1;
+    } else {
+      home.ties += 1;
+      away.ties += 1;
+    }
+  }
+
+  return teams
+    .map((t) => {
+      const r = recordByTeam.get(t.id)!;
+      const points = r.wins * 2 + r.ties;
+      const pct = r.gp > 0 ? (points / (2 * r.gp)).toFixed(3).replace(/^0/, "") : ".000";
+      return {
+        team: t.name,
+        gp: r.gp,
+        wins: r.wins,
+        losses: r.losses,
+        ties: r.ties,
+        points,
+        pct,
+        goalsFor: r.gf,
+        goalsAgainst: r.ga,
+        diff: r.gf - r.ga,
+      };
+    })
+    .sort((a, b) => b.points - a.points || b.diff - a.diff || b.goalsFor - a.goalsFor);
+}
+
 export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | null> => {
   const supabase = createBrowserClient();
 
@@ -364,55 +416,7 @@ export const getSeasonLive = cache(async (id?: string): Promise<LiveSeason | nul
   // Subs aggregate under "Sub" — /stats already splits that label into its own table.
   const subIds = new Set(players.filter((p) => p.is_sub).map((p) => p.id));
 
-  // --- Standings: FINAL, regular-season games only. Playoff games never
-  // touch the standings — they appear on game pages and /playoffs instead. ---
-  type TeamRecord = { gp: number; wins: number; losses: number; ties: number; gf: number; ga: number };
-  const recordByTeam = new Map<string, TeamRecord>(
-    teams.map((t) => [t.id, { gp: 0, wins: 0, losses: 0, ties: 0, gf: 0, ga: 0 }]),
-  );
-
-  for (const g of games) {
-    if (g.gameType !== "regular" || g.status !== "final" || g.homeScore === null || g.awayScore === null) continue;
-    const home = recordByTeam.get(g.homeTeamId);
-    const away = recordByTeam.get(g.awayTeamId);
-    if (!home || !away) continue;
-    home.gp += 1;
-    away.gp += 1;
-    home.gf += g.homeScore;
-    home.ga += g.awayScore;
-    away.gf += g.awayScore;
-    away.ga += g.homeScore;
-    if (g.homeScore > g.awayScore) {
-      home.wins += 1;
-      away.losses += 1;
-    } else if (g.awayScore > g.homeScore) {
-      away.wins += 1;
-      home.losses += 1;
-    } else {
-      home.ties += 1;
-      away.ties += 1;
-    }
-  }
-
-  const standings: TeamStanding[] = teams
-    .map((t) => {
-      const r = recordByTeam.get(t.id)!;
-      const points = r.wins * 2 + r.ties;
-      const pct = r.gp > 0 ? (points / (2 * r.gp)).toFixed(3).replace(/^0/, "") : ".000";
-      return {
-        team: t.name,
-        gp: r.gp,
-        wins: r.wins,
-        losses: r.losses,
-        ties: r.ties,
-        points,
-        pct,
-        goalsFor: r.gf,
-        goalsAgainst: r.ga,
-        diff: r.gf - r.ga,
-      };
-    })
-    .sort((a, b) => b.points - a.points || b.diff - a.diff || b.goalsFor - a.goalsFor);
+  const standings = computeStandings(teams, games);
 
   // Only finished, regular-season games count toward GP and scoring totals —
   // playoff and live-in-progress stat lines show up on the game page, not league stats.

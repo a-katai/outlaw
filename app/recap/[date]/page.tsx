@@ -70,6 +70,13 @@ export default async function RecapPage({ params }: { params: Promise<{ date: st
           >
             Download card
           </a>
+          <a
+            href={`/recap/${date}/standings`}
+            download={`ohl-standings-${date}.png`}
+            className="text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900"
+          >
+            Download standings
+          </a>
         </div>
       </div>
 

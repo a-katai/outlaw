@@ -1,29 +1,12 @@
-import fs from "node:fs";
-import path from "node:path";
 import { ImageResponse } from "next/og";
 import { getRecap, shortDate, weekLabel, type RecapGame } from "@/lib/recap";
 import type { Star } from "@/lib/three-stars";
-import { DefaultLeagueCard, OG_COLORS, publicImageDataUri, teamAccent, teamLogoDataUri } from "@/lib/og-helpers";
+import { DefaultLeagueCard, loadBarlowFonts, OG_COLORS, publicImageDataUri, teamAccent, teamLogoDataUri } from "@/lib/og-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SIZE = { width: 1080, height: 1350 }; // Facebook 4:5
-
-// Barlow Condensed is vendored as TTF (satori can't read next/font's woff2).
-let fonts: { name: string; data: Buffer; weight: 700 | 800; style: "normal" }[] | null = null;
-function loadFonts() {
-  if (!fonts) {
-    const dir = path.join(process.cwd(), "public", "fonts");
-    fonts = ([700, 800] as const).map((weight) => ({
-      name: "Barlow Condensed",
-      data: fs.readFileSync(path.join(dir, `BarlowCondensed-${weight}.ttf`)),
-      weight,
-      style: "normal" as const,
-    }));
-  }
-  return fonts;
-}
 
 const NAMEPLATE = "Barlow Condensed";
 const GREY = "#86868b";
@@ -233,6 +216,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ date: s
         </div>
       </div>
     ),
-    { ...SIZE, fonts: loadFonts(), headers: { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=3600" } },
+    { ...SIZE, fonts: loadBarlowFonts(), headers: { "Cache-Control": "public, max-age=0, s-maxage=300, stale-while-revalidate=3600" } },
   );
 }

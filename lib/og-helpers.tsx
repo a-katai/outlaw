@@ -92,3 +92,18 @@ const ACCENT: Record<string, string> = {
   "wednesday knights": "#F59E0B",
 };
 export const teamAccent = (team: string) => ACCENT[team.trim().toLowerCase()] ?? getTeamColors(team).border;
+
+// Barlow Condensed is vendored as TTF (satori can't read next/font's woff2).
+let barlow: { name: string; data: Buffer; weight: 700 | 800; style: "normal" }[] | null = null;
+export function loadBarlowFonts() {
+  if (!barlow) {
+    const dir = path.join(process.cwd(), "public", "fonts");
+    barlow = ([700, 800] as const).map((weight) => ({
+      name: "Barlow Condensed",
+      data: fs.readFileSync(path.join(dir, `BarlowCondensed-${weight}.ttf`)),
+      weight,
+      style: "normal" as const,
+    }));
+  }
+  return barlow;
+}
